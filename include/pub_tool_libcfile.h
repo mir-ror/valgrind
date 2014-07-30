@@ -91,7 +91,7 @@ extern Int    VG_(unlink) ( const HChar* file_name );
 
 extern SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout);
 
-extern Int    VG_(readlink)( const HChar* path, HChar* buf, UInt bufsize );
+extern Int    VG_(readlink)( const HChar* path, HChar** buf );
 extern Int    VG_(getdents)( Int fd, struct vki_dirent *dirp, UInt count );
 
 extern const HChar* VG_(basename)( const HChar* path );

@@ -70,14 +70,18 @@ Int VG_(safe_fd)(Int oldfd)
 
 /* Given a file descriptor, attempt to deduce its filename.  To do
    this, we use /proc/self/fd/<FD>.  If this doesn't point to a file,
-   or if it doesn't exist, we return False. */
-Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf )
+   or if it doesn't exist, we return False. 
+   Upon successful completion *result contains the filename. The
+   filename will be overwritten with the next invocation so callers
+   need to copy the filename if needed. *result is NULL if the filename
+   cannot be deduced. */
+Bool VG_(resolve_filename) ( Int fd, HChar** result )
 {
 #  if defined(VGO_linux)
-   HChar tmp[64];
+   HChar tmp[64];   // large enough
    VG_(sprintf)(tmp, "/proc/self/fd/%d", fd);
-   VG_(memset)(buf, 0, n_buf);
-   if (VG_(readlink)(tmp, buf, n_buf) > 0 && buf[0] == '/')
+
+   if (VG_(readlink)(tmp, result) > 0 && (*result)[0] == '/')
       return True;
    else
       return False;
@@ -85,12 +89,16 @@ Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf )
 #  elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
    if (0 == VG_(fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {
-      if (n_buf > 0) {
-         VG_(strncpy)( buf, tmp, n_buf < sizeof(tmp) ? n_buf : sizeof(tmp) );
-         buf[n_buf-1] = 0;
-      }
-      if (tmp[0] == '/') return True;
+      static HChar *buf = NULL;
+
+      if (buf == NULL) 
+         buf = VG_(arena_malloc)(VG_AR_CORE, VKI_MAXPATHLEN+1);
+      VG_(strcpy)( buf, tmp );
+
+      *result = buf;
+      if (result[0] == '/') return True;
    }
+   *result = NULL;
    return False;
 
 #  else
@@ -507,17 +515,51 @@ SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout)
 }
 
 
-Int VG_(readlink) (const HChar* path, HChar* buf, UInt bufsiz)
+/* Perform the readlink operation on path. Upon successful completion
+   *result points to a dynamically allocated buffer that contains the
+   untruncated contents of the symbolic link. The string is properly
+   terminated with '\0'. The return value is the number of characters
+   written to that buffer not counting the terminating '\0' character.
+   This buffer will be overwritten in the next invocation so callers
+   need to copy the result if needed.
+   If the operation fails, the function returns -1 and *result is NULL. */
+Int VG_(readlink) (const HChar* path, HChar** result)
 {
    SysRes res;
-   /* res = readlink( path, buf, bufsiz ); */
+   static HChar *buf = NULL;
+   static UInt bufsiz = 0;
+
+   if (buf == NULL) {          // 1st time
+      bufsiz = VKI_PATH_MAX;
+      buf = VG_(arena_malloc)(VG_AR_CORE, "readlink", bufsiz);
+   }
+
+   while (42) {
 #  if defined(VGP_arm64_linux)
-   res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
+      res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                            (UWord)path, (UWord)buf, bufsiz);
 #  else
-   res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
+      res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
 #  endif
-   return sr_isError(res) ? -1 : sr_Res(res);
+      if (sr_isError(res)) {
+         *result = NULL;
+         return -1;
+      }
+      UInt num_char_written = sr_Res(res);
+
+      if (num_char_written == bufsiz) {
+         // Buffer was too small. Increase size and retry.
+         bufsiz += VKI_PATH_MAX;
+         buf = VG_(arena_realloc)(VG_AR_CORE, "readlink", buf, bufsiz);
+         continue;
+      }
+
+      vg_assert(num_char_written < bufsiz);    // paranoia
+
+      buf[num_char_written] = '\0';    // properly terminate
+      *result = buf;
+      return num_char_written;
+   }
 }
 
 Int VG_(getdents) (Int fd, struct vki_dirent *dirp, UInt count)
