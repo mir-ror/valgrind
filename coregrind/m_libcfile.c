@@ -432,7 +432,7 @@ static Bool   startup_wd_acquired = False;
    there is a problem. */
 Bool VG_(record_startup_wd) ( void )
 {
-   Int szB = VKI_PATH_MAX;
+   Int szB = 0;
    vg_assert(!startup_wd_acquired);
 
 #  if defined(VGO_linux)
