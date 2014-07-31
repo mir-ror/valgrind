@@ -307,7 +307,7 @@ void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, HChar buf[])
    p1 = (100*n) / m;
     
    if (d == 0) {
-      VG_(sprintf)(buf, "%lld%%", p1);  // FIXME: unsafe
+      VG_(sprintf)(buf, "%llu%%", p1);  // FIXME: unsafe
    } else {
       ULong p2;
       UInt  ex;
