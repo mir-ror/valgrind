@@ -65,9 +65,6 @@ static HChar *bb_out_file=NULL;
 static Bool instr_count_only=False;
 static Bool generate_pc_file=False;
 
-   /* write buffer */
-static HChar buf[1024];
-
    /* Global values */
 static OSet* instr_info_table;  /* table that holds the basic block info */
 static Int block_num=1;         /* global next block number */
@@ -122,11 +119,12 @@ static void dumpPcFile(void)
    VG_(OSetGen_ResetIter)(instr_info_table);
    while ( (bb_elem = VG_(OSetGen_Next)(instr_info_table)) ) {
       VG_(write)(pctrace_fd,"F",1);
+      HChar buf[VG_(strlen)(bb_elem->fn_name) + 100];  // large enough
       VG_(sprintf)( buf,":%d:%x:%s\n",
                        bb_elem->block_num,
                        (Int)bb_elem->BB_addr,
                        bb_elem->fn_name);
-      VG_(write)(pctrace_fd, (void*)buf, VG_(strlen)(buf));
+      VG_(write)(pctrace_fd, buf, VG_(strlen)(buf));
    }
 
    VG_(close)(pctrace_fd);
@@ -135,13 +133,14 @@ static void dumpPcFile(void)
 static Int open_tracefile(Int thread_num)
 {
    SysRes  sres;
-   HChar temp_string[2048];
+   // Allocate a buffer large enough for the general case "%s.%d" below
+   HChar temp_string[VG_(strlen)(bb_out_file) + 1 + 10 + 1];
 
       /* For thread 1, don't append any thread number  */
       /* This lets the single-thread case not have any */
       /* extra values appended to the file name.       */
    if (thread_num==1) {
-      VG_(strncpy)(temp_string,bb_out_file,2047);
+      VG_(strcpy)(temp_string, bb_out_file);
    }
    else {
       VG_(sprintf)(temp_string,"%s.%d",bb_out_file,thread_num);
@@ -178,11 +177,12 @@ static void handle_overflow(void)
          VG_(OSetGen_ResetIter)(instr_info_table);
          while ( (bb_elem = VG_(OSetGen_Next)(instr_info_table)) ) {
             if ( bb_elem->inst_counter[current_thread] != 0 ) {
+               HChar buf[32];    // large enough
                VG_(sprintf)( buf,":%d:%d   ",
                          bb_elem->block_num,
                          bb_elem->inst_counter[current_thread]);
                VG_(write)(bbv_thread[current_thread].bbtrace_fd,
-                          (void*)buf, VG_(strlen)(buf));
+                          buf, VG_(strlen)(buf));
                bb_elem->inst_counter[current_thread] = 0;
             }
          }
@@ -570,7 +570,7 @@ static void bbv_fini(Int exitcode)
    for(i=0;i<allocated_threads;i++) {
 
       if (bbv_thread[i].total_instr!=0) {
-
+         HChar buf[500];  // large enough
          VG_(sprintf)(buf,"\n\n"
                           "# Thread %d\n"
                           "#   Total intervals: %d (Interval Size %d)\n"
@@ -594,7 +594,7 @@ static void bbv_fini(Int exitcode)
             bbv_thread[i].bbtrace_fd=open_tracefile(i);
          }
             /* Also print to results file */
-         VG_(write)(bbv_thread[i].bbtrace_fd,(void*)buf,VG_(strlen)(buf));
+         VG_(write)(bbv_thread[i].bbtrace_fd,buf,VG_(strlen)(buf));
          VG_(close)(bbv_thread[i].bbtrace_fd);
       }
    }
