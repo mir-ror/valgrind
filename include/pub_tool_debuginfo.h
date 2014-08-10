@@ -43,7 +43,7 @@
    returns False.  VG_(get_fnname) always
    demangles C++ function names.  VG_(get_fnname_w_offset) is the
    same, except it appends "+N" to symbol names to indicate offsets.  */
-extern Bool VG_(get_filename) ( Addr a, HChar* filename, Int n_filename );
+extern Bool VG_(get_filename) ( Addr a, HChar** filename );
 extern Bool VG_(get_fnname)   ( Addr a, HChar** fnname );
 extern Bool VG_(get_linenum)  ( Addr a, UInt* linenum );
 extern Bool VG_(get_fnname_w_offset)

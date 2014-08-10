@@ -1900,8 +1900,11 @@ DebugInfo* VG_(find_DebugInfo) ( Addr a )
    return NULL;
 }
 
-/* Map a code address to a filename.  Returns True if successful.  */
-Bool VG_(get_filename)( Addr a, HChar* filename, Int n_filename )
+/* Map a code address to a filename.  Returns True if successful. In that
+   case *filename points to a dynamically allocated buffer that holds the
+   nul-terminated filename. Note, that this buffer will be overwritten in
+   the next invocation, so callers need to copy the string if so needed. */
+Bool VG_(get_filename)( Addr a, HChar** filename )
 {
    DebugInfo* si;
    Word       locno;
@@ -1909,14 +1912,26 @@ Bool VG_(get_filename)( Addr a, HChar* filename, Int n_filename )
    FnDn*      fndn;
 
    search_all_loctabs ( a, &si, &locno );
-   if (si == NULL) 
+   if (si == NULL) {
+      *filename = NULL;
       return False;
+   }
    fndn_ix = ML_(fndn_ix) (si, locno);
    if (fndn_ix == 0)
-      VG_(strncpy_safely)(filename, "???", n_filename);
+      *filename = (HChar *)"???";    // FIXME: constification
    else {
+      static SizeT bufsiz = 0;
+      static HChar *buf = NULL;
+      SizeT need;
       fndn = VG_(indexEltNumber) (si->fndnpool, fndn_ix);
-      VG_(strncpy_safely)(filename, fndn->filename, n_filename);
+      need = VG_(strlen)(fndn->filename) + 1;
+      if (need < 256) need = 256;
+      if (need > bufsiz) {
+         bufsiz = need;
+         buf = ML_(dinfo_realloc)("get_filename", buf, bufsiz);
+      }
+      VG_(strcpy)(buf, fndn->filename);
+      *filename = buf;
    }
    return True;
 }
