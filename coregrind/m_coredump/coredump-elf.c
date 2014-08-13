@@ -322,7 +322,7 @@ static void fill_prstatus(const ThreadState *tst,
    regs->dsisr = 0;
    regs->result = 0;
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux)
 #  define DO(n)  regs->gpr[n] = arch->vex.guest_GPR##n
    DO(0);  DO(1);  DO(2);  DO(3);  DO(4);  DO(5);  DO(6);  DO(7);
    DO(8);  DO(9);  DO(10); DO(11); DO(12); DO(13); DO(14); DO(15);
@@ -337,6 +337,27 @@ static void fill_prstatus(const ThreadState *tst,
    regs->link = arch->vex.guest_LR;
    regs->xer = LibVEX_GuestPPC64_get_XER( &arch->vex );
    regs->ccr = LibVEX_GuestPPC64_get_CR( &arch->vex );
+   /* regs->mq = 0; */
+   regs->trap = 0;
+   regs->dar = 0; /* should be fault address? */
+   regs->dsisr = 0;
+   regs->result = 0;
+
+#elif defined(VGP_ppc64le_linux)
+#  define DO(n)  regs->gpr[n] = arch->vex.guest_GPR##n
+   DO(0);  DO(1);  DO(2);  DO(3);  DO(4);  DO(5);  DO(6);  DO(7);
+   DO(8);  DO(9);  DO(10); DO(11); DO(12); DO(13); DO(14); DO(15);
+   DO(16); DO(17); DO(18); DO(19); DO(20); DO(21); DO(22); DO(23);
+   DO(24); DO(25); DO(26); DO(27); DO(28); DO(29); DO(30); DO(31);
+#  undef DO
+
+   regs->nip = arch->vex.guest_CIA;
+   regs->msr = 0xf033;   /* pretty arbitrary */
+   regs->orig_gpr3 = arch->vex.guest_GPR3;
+   regs->ctr = arch->vex.guest_CTR;
+   regs->link = arch->vex.guest_LR;
+   regs->xer = LibVEX_GuestPPC64_get_XER( &((ThreadArchState*)arch)->vex );
+   regs->ccr = LibVEX_GuestPPC64_get_CR( &((ThreadArchState*)arch)->vex );
    /* regs->mq = 0; */
    regs->trap = 0;
    regs->dar = 0; /* should be fault address? */
@@ -458,7 +479,7 @@ static void fill_fpu(const ThreadState *tst, vki_elf_fpregset_t *fpu)
    DO(24); DO(25); DO(26); DO(27); DO(28); DO(29); DO(30); DO(31);
 #  undef DO
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
    /* The guest state has the FPR fields declared as ULongs, so need
       to fish out the values without converting them.
       NOTE: The 32 FP registers map to the first 32 VSX registers.*/

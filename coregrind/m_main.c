@@ -2022,7 +2022,8 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
 #     if defined(VGP_x86_linux)
       iters = 10;
-#     elif defined(VGP_amd64_linux) || defined(VGP_ppc64_linux)
+#     elif defined(VGP_amd64_linux) || defined(VGP_ppc64be_linux) \
+         || defined(VGP_ppc64le_linux)
       iters = 10;
 #     elif defined(VGP_ppc32_linux)
       iters = 5;
@@ -2601,7 +2602,7 @@ void shutdown_actions_NORETURN( ThreadId tid,
 static void final_tidyup(ThreadId tid)
 {
 #if !defined(VGO_darwin)
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
    Addr r2;
 #  endif
    Addr __libc_freeres_wrapper = VG_(client___libc_freeres_wrapper);
@@ -2613,7 +2614,7 @@ static void final_tidyup(ThreadId tid)
         0 == __libc_freeres_wrapper )
       return;			/* can't/won't do it */
 
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
    r2 = VG_(get_tocptr)( __libc_freeres_wrapper );
    if (r2 == 0) {
       VG_(message)(Vg_UserMsg, 
@@ -2631,13 +2632,17 @@ static void final_tidyup(ThreadId tid)
 		   "Caught __NR_exit; running __libc_freeres()\n");
       
    /* set thread context to point to libc_freeres_wrapper */
-   /* ppc64-linux note: __libc_freeres_wrapper gives us the real
+   /* ppc64be-linux note: __libc_freeres_wrapper gives us the real
       function entry point, not a fn descriptor, so can use it
       directly.  However, we need to set R2 (the toc pointer)
       appropriately. */
    VG_(set_IP)(tid, __libc_freeres_wrapper);
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
    VG_(threads)[tid].arch.vex.guest_GPR2 = r2;
+#  elif  defined(VGP_ppc64le_linux)
+   /* setting GPR2 but not really needed, GPR12 is needed */
+   VG_(threads)[tid].arch.vex.guest_GPR2  = __libc_freeres_wrapper;
+   VG_(threads)[tid].arch.vex.guest_GPR12 = __libc_freeres_wrapper;
 #  endif
    /* mips-linux note: we need to set t9 */
 #  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
@@ -2833,7 +2838,7 @@ asm("\n"
     "\ttrap\n"
     ".previous\n"
 );
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux)
 asm("\n"
     /* PPC64 ELF ABI says '_start' points to a function descriptor.
        So we must have one, and that is what goes into the .opd section. */
@@ -2874,6 +2879,51 @@ asm("\n"
     "\toris 14,14,_start_in_C_linux@h\n"
     "\tori  14,14,_start_in_C_linux@l\n"
     "\tld 14,0(14)\n"
+    "\tmtctr 14\n"
+    "\tbctrl\n"
+    "\tnop\n"
+    "\ttrap\n"
+);
+#elif defined(VGP_ppc64le_linux)
+/* Little Endian uses ELF version 2 but in the future may also
+ * support other ELF versions.
+ */
+asm("\n"
+    "\t.align 2\n"
+    "\t.global _start\n"
+    "\t.type _start,@function\n"
+    "_start:\n"
+    "#if _CALL_ELF == 2    \n"
+    "0:  addis        2,12,.TOC.-0b@ha\n"
+    "    addi         2,2,.TOC.-0b@l\n"
+    "    .localentry  _start, .-_start\n"
+    "#endif \n"
+    /* set up the new stack in r16 */
+    "\tlis  16,   vgPlain_interim_stack@highest\n"
+    "\tori  16,16,vgPlain_interim_stack@higher\n"
+    "\tsldi 16,16,32\n"
+    "\toris 16,16,vgPlain_interim_stack@h\n"
+    "\tori  16,16,vgPlain_interim_stack@l\n"
+    "\txor  17,17,17\n"
+    "\tlis    17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" >> 16)\n"
+    "\tori 17,17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" & 0xFFFF)\n"
+    "\txor 18,18,18\n"
+    "\tlis    18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" >> 16)\n"
+    "\tori 18,18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
+    "\tadd 16,17,16\n"
+    "\tadd 16,18,16\n"
+    "\trldicr 16,16,0,59\n"
+    /* now r16 = &vgPlain_interim_stack + VG_STACK_GUARD_SZB +
+       VG_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
+       boundary.  And r1 is the original SP.  Set the SP to r16 and
+       call _start_in_C_linux, passing it the initial SP. */
+    "\tmr 3,1\n"
+    "\tmr 1,16\n"
+    "\tlis  14,   _start_in_C_linux@highest\n"
+    "\tori  14,14,_start_in_C_linux@higher\n"
+    "\tsldi 14,14,32\n"
+    "\toris 14,14,_start_in_C_linux@h\n"
+    "\tori  14,14,_start_in_C_linux@l\n"
     "\tmtctr 14\n"
     "\tbctrl\n"
     "\tnop\n"
@@ -3092,10 +3142,10 @@ void _start_in_C_linux ( UWord* pArgc )
 
    the_iicii.sp_at_startup = (Addr)pArgc;
 
-#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-      || defined(VGP_arm64_linux)
+#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
+      || defined(VGP_ppc64le_linux) || defined(VGP_arm64_linux)
    {
-      /* ppc/ppc64 can be configured with different page sizes.
+      /* ppc32/ppc64 can be configured with different page sizes.
          Determine this early.  This is an ugly hack and really should
          be moved into valgrind_main. */
       UWord *sp = &pArgc[1+argc+1];

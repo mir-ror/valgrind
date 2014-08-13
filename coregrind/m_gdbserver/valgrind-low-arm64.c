@@ -218,18 +218,27 @@ void transfer_register (ThreadId tid, int abs_regno, void * buf,
    case 64: VG_(transfer) (&arm->guest_Q30, buf, dir, size, mod); break;
    case 65: VG_(transfer) (&arm->guest_Q31, buf, dir, size, mod); break;
    case 66: {
-      /* The ARM64 FPSR representation is not the same as the
+      /* The VEX ARM64 FPSR representation is not the same as the
           architecturally defined representation.  Hence use conversion
-          functions to convert to/from it. */
+          functions to convert to/from it.
+          VEX FPSR only models QC (bit 27), and uses a 64 bits to store
+          this FPSR QC bit. So, we need to transfer from/to the lowest
+          significant part of the ULong that VEX provides/needs,
+          as GDB expects or gives only 4 bytes. */
       if (dir == valgrind_to_gdbserver) {
-         ULong fpsr = LibVEX_GuestARM64_get_fpsr(arm);
-         // XXX FIXME what if size != 8 ?  Does this still work?
+         ULong fpsr64 = LibVEX_GuestARM64_get_fpsr(arm);
+         UInt fpsr = (UInt)fpsr64;
          VG_(transfer) (&fpsr, buf, dir, size, mod);
       } else {
-         // XXX FIXME what if size != 8 ?  Does this still work?
-         ULong fpsr = 0;
-         VG_(transfer) (&fpsr, buf, dir, size, mod);
-         LibVEX_GuestARM64_set_fpsr(arm, fpsr);
+         UInt fpsr;
+         ULong fpsr64;
+         VG_(transfer) ((UInt*)&fpsr, buf, dir, size, mod);
+         fpsr64 = fpsr;
+         LibVEX_GuestARM64_set_fpsr(arm, fpsr64);
+         /* resync the cache with the part of fpsr that VEX represents. */
+         fpsr64 = LibVEX_GuestARM64_get_fpsr(arm);
+         fpsr = (UInt)fpsr64;
+         VG_(transfer) (&fpsr, buf, valgrind_to_gdbserver, size, mod);
       }
       break;
    }

@@ -199,7 +199,7 @@ void ML_(ppDiCfSI) ( XArray* /* of CfiExpr */ exprs,
    SHOW_HOW(si_m->r11_how, si_m->r11_off);
    VG_(printf)(" R7=");
    SHOW_HOW(si_m->r7_how, si_m->r7_off);
-#  elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  elif defined(VGA_s390x) || defined(VGA_mips32) || defined(VGA_mips64)
    VG_(printf)(" SP=");
    SHOW_HOW(si_m->sp_how, si_m->sp_off);
@@ -269,6 +269,33 @@ UInt ML_(addFnDn) (struct _DebugInfo* di,
    fndn.dirname = dirname ? ML_(addStr)(di, dirname, -1) : NULL;
    fndn_ix = VG_(allocFixedEltDedupPA) (di->fndnpool, sizeof(FnDn), &fndn);
    return fndn_ix;
+}
+
+const HChar* ML_(fndn_ix2filename) (struct _DebugInfo* di,
+                                    UInt fndn_ix)
+{
+   FnDn *fndn;
+   if (fndn_ix == 0)
+      return "???";
+   else {
+      fndn = VG_(indexEltNumber) (di->fndnpool, fndn_ix);
+      return fndn->filename;
+   }
+}
+
+const HChar* ML_(fndn_ix2dirname) (struct _DebugInfo* di,
+                                   UInt fndn_ix)
+{
+   FnDn *fndn;
+   if (fndn_ix == 0)
+      return "";
+   else {
+      fndn = VG_(indexEltNumber) (di->fndnpool, fndn_ix);
+      if (fndn->dirname)
+         return fndn->dirname;
+      else
+         return "";
+   }
 }
 
 /* Add a string to the string table of a DebugInfo, by copying the
@@ -581,7 +608,7 @@ static void shrinkInlTab ( struct _DebugInfo* di )
 void ML_(addInlInfo) ( struct _DebugInfo* di, 
                        Addr addr_lo, Addr addr_hi,
                        const HChar* inlinedfn,
-                       const HChar* filename, 
+                       UInt fndn_ix,
                        Int lineno, UShort level)
 {
    DiInlLoc inl;
@@ -618,15 +645,16 @@ void ML_(addInlInfo) ( struct _DebugInfo* di,
    inl.addr_hi   = addr_hi;
    inl.inlinedfn = inlinedfn;
    // caller:
-   inl.filename  = filename;
+   inl.fndn_ix   = fndn_ix;
    inl.lineno    = lineno;
    inl.level     = level;
 
    if (0) VG_(message)
              (Vg_DebugMsg, 
               "addInlInfo: fn %s inlined as addr_lo %#lx,addr_hi %#lx,"
-              "caller %s:%d\n",
-              inlinedfn, addr_lo, addr_hi, filename, lineno);
+              "caller fndn_ix %d %s:%d\n",
+              inlinedfn, addr_lo, addr_hi, fndn_ix,
+              ML_(fndn_ix2filename) (di, fndn_ix), lineno);
 
    addInl ( di, &inl );
 }
@@ -696,7 +724,7 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di,
          if (VG_(clo_verbosity) > 1) {
             VG_(message)(
                Vg_DebugMsg,
-               "warning: DiCfSI %#lx .. %#lx outside mapped rw segments (%s)\n",
+               "warning: DiCfSI %#lx .. %#lx outside mapped rx segments (%s)\n",
                base, 
                base + len - 1,
                di->soname
@@ -875,6 +903,7 @@ static void ppCfiBinop ( CfiBinop op )
 static void ppCfiReg ( CfiReg reg )
 {
    switch (reg) {
+      case Creg_INVALID:   VG_(printf)("Creg_INVALID"); break;
       case Creg_IA_SP:     VG_(printf)("xSP"); break;
       case Creg_IA_BP:     VG_(printf)("xBP"); break;
       case Creg_IA_IP:     VG_(printf)("xIP"); break;
@@ -882,6 +911,7 @@ static void ppCfiReg ( CfiReg reg )
       case Creg_ARM_R12:   VG_(printf)("R12"); break;
       case Creg_ARM_R15:   VG_(printf)("R15"); break;
       case Creg_ARM_R14:   VG_(printf)("R14"); break;
+      case Creg_ARM_R7:    VG_(printf)("R7");  break;
       case Creg_ARM64_X30: VG_(printf)("X30"); break;
       case Creg_MIPS_RA:   VG_(printf)("RA"); break;
       case Creg_S390_R14:  VG_(printf)("R14"); break;
@@ -1123,8 +1153,8 @@ void ML_(addVar)( struct _DebugInfo* di,
                   UWord  typeR, /* a cuOff */
                   GExpr* gexpr,
                   GExpr* fbGX,
-                  HChar* fileName, /* where decl'd - may be NULL.
-                                      in di's .strpool */
+                  UInt   fndn_ix, /* where decl'd - may be zero.
+                                     index in in di's .fndnpool */
                   Int    lineNo, /* where decl'd - may be zero */
                   Bool   show )
 {
@@ -1258,7 +1288,7 @@ void ML_(addVar)( struct _DebugInfo* di,
    var.typeR    = typeR;
    var.gexpr    = gexpr;
    var.fbGX     = fbGX;
-   var.fileName = fileName;
+   var.fndn_ix  = fndn_ix;
    var.lineNo   = lineNo;
 
    all = aMin == (Addr)0 && aMax == ~(Addr)0;

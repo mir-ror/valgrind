@@ -348,7 +348,7 @@ typedef struct SigQueue {
         (srP)->misc.PPC32.r_lr = (uc)->uc_regs->mc_gregs[VKI_PT_LNK]; \
       }
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
 #  define VG_UCONTEXT_INSTR_PTR(uc)  ((uc)->uc_mcontext.gp_regs[VKI_PT_NIP])
 #  define VG_UCONTEXT_STACK_PTR(uc)  ((uc)->uc_mcontext.gp_regs[VKI_PT_R1])
    /* Dubious hack: if there is an error, only consider the lowest 8
@@ -851,7 +851,7 @@ extern void my_sigreturn(void);
    "	sc\n" \
    ".previous\n"
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux)
 #  define _MY_SIGRETURN(name) \
    ".align   2\n" \
    ".globl   my_sigreturn\n" \
@@ -865,6 +865,23 @@ extern void my_sigreturn(void);
    ".my_sigreturn:\n" \
    "	li	0, " #name "\n" \
    "	sc\n"
+
+#elif defined(VGP_ppc64le_linux)
+/* Little Endian supports ELF version 2.  In the future, it may
+ * support other versions.
+ */
+#  define _MY_SIGRETURN(name) \
+   ".align   2\n" \
+   ".globl   my_sigreturn\n" \
+   ".type    .my_sigreturn,@function\n" \
+   "my_sigreturn:\n" \
+   "#if _CALL_ELF == 2 \n" \
+   "0: addis        2,12,.TOC.-0b@ha\n" \
+   "   addi         2,2,.TOC.-0b@l\n" \
+   "   .localentry my_sigreturn,.-my_sigreturn\n" \
+   "#endif \n" \
+   "   sc\n" \
+   "   .size my_sigreturn,.-my_sigreturn\n"
 
 #elif defined(VGP_arm_linux)
 #  define _MY_SIGRETURN(name) \

@@ -244,7 +244,8 @@ static void run_a_thread_NORETURN ( Word tidW )
          : "n" (VgTs_Empty), "n" (__NR_exit), "m" (tst->os_state.exitcode)
          : "rax", "rdi"
       );
-#elif defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
+      || defined(VGP_ppc64le_linux)
       { UInt vgts_empty = (UInt)VgTs_Empty;
         asm volatile (
           "stw %1,%0\n\t"          /* set tst->status = VgTs_Empty */
@@ -385,7 +386,7 @@ void VG_(main_thread_wrapper_NORETURN)(ThreadId tid)
    sp -= 16;
    sp &= ~0xF;
    *(UWord *)sp = 0;
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
    /* make a stack frame */
    sp -= 112;
    sp &= ~((Addr)0xF);
@@ -438,7 +439,8 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
    /* Since this is the fork() form of clone, we don't need all that
       VG_(clone) stuff */
 #if defined(VGP_x86_linux) \
-    || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
+    || defined(VGP_ppc32_linux) \
+    || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
     || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
     || defined(VGP_mips64_linux) || defined(VGP_arm64_linux)
    res = VG_(do_syscall5)( __NR_clone, flags, 
@@ -5373,6 +5375,8 @@ PRE(sys_ioctl)
 {
    *flags |= SfMayBlock;
 
+   ARG2 = (UInt)ARG2;
+
    // We first handle the ones that don't use ARG3 (even as a
    // scalar/non-pointer argument).
    switch (ARG2 /* request */) {
@@ -6084,6 +6088,9 @@ PRE(sys_ioctl)
       break;
    case VKI_BLKPBSZGET:
       PRE_MEM_WRITE( "ioctl(BLKPBSZGET)", ARG3, sizeof(int));
+      break;
+   case VKI_BLKDISCARDZEROES:
+      PRE_MEM_WRITE( "ioctl(BLKDISCARDZEROES)", ARG3, sizeof(vki_uint));
       break;
 
       /* Hard disks */
@@ -7067,6 +7074,12 @@ PRE(sys_ioctl)
    }
 #endif
 
+   /* To do: figure out which software layer extends the sign of 'request' */
+   case VKI_OBD_IOC_FID2PATH:
+      PRE_MEM_READ("VKI_OBD_IOC_FID2PATH(args)", ARG3,
+                   sizeof(struct vki_getinfo_fid2path));
+      break;
+
    default:
       /* EVIOC* are variable length and return size written on success */
       switch (ARG2 & ~(_VKI_IOC_SIZEMASK << _VKI_IOC_SIZESHIFT)) {
@@ -7102,6 +7115,8 @@ PRE(sys_ioctl)
 POST(sys_ioctl)
 {
    vg_assert(SUCCESS);
+
+   ARG2 = (UInt)ARG2;
 
    /* --- BEGIN special IOCTL handlers for specific Android hardware --- */
 
@@ -7683,6 +7698,9 @@ POST(sys_ioctl)
       break;
    case VKI_BLKPBSZGET:
       POST_MEM_WRITE(ARG3, sizeof(int));
+      break;
+   case VKI_BLKDISCARDZEROES:
+      POST_MEM_WRITE(ARG3, sizeof(vki_uint));
       break;
 
       /* Hard disks */
@@ -8353,6 +8371,13 @@ POST(sys_ioctl)
       }
       break;
 #endif
+
+   /* To do: figure out which software layer extends the sign of 'request' */
+   case VKI_OBD_IOC_FID2PATH: {
+       struct vki_getinfo_fid2path *args = (void *)(ARG3);
+       POST_MEM_WRITE((Addr)args->gf_path, args->gf_pathlen);
+      }
+      break;
 
    default:
       /* EVIOC* are variable length and return size written on success */

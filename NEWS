@@ -16,10 +16,16 @@ Release 3.10.0 (?? ?????? 201?)
   - new leak check heuristic 'length64' to detect interior pointers
     pointing at offset 64bit of a block, when the first 8 bytes contains
     the block size - 8. This is e.g. used by sqlite3MemMalloc.
+  - if a syscall param (e.g. bind struct sockaddr, sendmsg struct msghdr,
+    ...) has several fields not initialised, an error is now reported for
+    each field. Previously, an error was reported only for the first wrong
+    field.
 
 * Helgrind:
   - Race condition error message with allocated blocks also show
     the thread nr that allocated the racy block.
+  - All locks referenced by an error message are now announced.
+    Previously, some error messages were just showing the lock addresses.
   - The message indicating where a lock was first observed now also
     describes the address/location of the lock.
   - Helgrind now understands the Ada task termination rules
@@ -83,6 +89,10 @@ Release 3.10.0 (?? ?????? 201?)
   backtrace to aid debugging.
 
 * Reduction of memory used by Valgrind to read and store the debug information.
+
+* Valgrind can now read EXIDX unwind information on 32-bit ARM targets.
+  If an object contains both CFI and EXIDX unwind information, Valgrind
+  will prefer the CFI over the EXIDX.
 
 * ==================== FIXED BUGS ====================
 
@@ -151,6 +161,7 @@ where XXXXXX is the bug number as listed below.
 331337  s390x WARNING: unhandled syscall: 326 (dup3)
 331380  Syscall param timer_create(evp) points to uninitialised byte(s)
 331476  Patch to handle ioctl 0x5422 on Linux (x86 and amd64)
+331829  Unexpected ioctl opcode sign extension
 331830  ppc64: WARNING: unhandled syscall: 96/97
 331839  drd/tests/sem_open specifies invalid semaphore name 
 331847  outcome of drd/tests/thread_name is nondeterministic
@@ -191,6 +202,8 @@ where XXXXXX is the bug number as listed below.
 337094  ifunc wrapper is broken on ppc64
 337285  fcntl commands F_OFD_SETLK, F_OFD_SETLKW, and F_OFD_GETLK not supported
 337528  leak check heuristic for block prefixed by length as 64bit number
+338024  inlined functions are not shown if DW_AT_ranges is used
+338115  DRD: computed conflict set differs from actual after fork
 n-i-bz  Fix KVM_CREATE_IRQCHIP ioctl handling
 n-i-bz  s390x: Fix memory corruption for multithreaded applications
 n-i-bz  vex arm->IR: allow PC as basereg in some LDRD cases
@@ -198,6 +211,7 @@ n-i-bz  internal error in Valgrind if vgdb transmit signals when ptrace invoked
 n-i-bz  Fix mingw64 support in valgrind.h (dev@, 9 May 2014)
 n-i-bz  drd manual: Document how to C++11 programs that use class "std::thread"
 n-i-bz  Add command-line option --default-suppressions
+n-i-bz  Add support for BLKDISCARDZEROES ioctl
 
 
 Release 3.9.0 (31 October 2013)

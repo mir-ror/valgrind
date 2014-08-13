@@ -555,8 +555,8 @@ Int VG_(getgroups)( Int size, UInt* list )
       list[i] = (UInt)list16[i];
    return sr_Res(sres);
 
-#  elif defined(VGP_amd64_linux) || defined(VGP_ppc64_linux)  \
-        || defined(VGP_arm_linux)                             \
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux) \
+        || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)  \
         || defined(VGO_darwin) || defined(VGP_s390x_linux)    \
         || defined(VGP_mips32_linux) || defined(VGP_arm64_linux)
    SysRes sres;
@@ -589,7 +589,15 @@ Int VG_(ptrace) ( Int request, Int pid, void *addr, void *data )
 
 Int VG_(fork) ( void )
 {
-#  if defined(VGO_linux)
+#  if defined(VGP_arm64_linux)
+   SysRes res;
+   res = VG_(do_syscall5)(__NR_clone, VKI_SIGCHLD,
+                          (UWord)NULL, (UWord)NULL, (UWord)NULL, (UWord)NULL);
+   if (sr_isError(res))
+      return -1;
+   return sr_Res(res);
+
+#  elif defined(VGO_linux)
    SysRes res;
    res = VG_(do_syscall0)(__NR_fork);
    if (sr_isError(res))
@@ -741,7 +749,7 @@ void VG_(invalidate_icache) ( void *ptr, SizeT nbytes )
    // If I-caches are coherent, nothing needs to be done here
    if (vai.hwcache_info.icaches_maintain_coherence) return;
 
-#  if defined(VGA_ppc32) || defined(VGA_ppc64)
+#  if defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
    Addr startaddr = (Addr) ptr;
    Addr endaddr   = startaddr + nbytes;
    Addr cls;

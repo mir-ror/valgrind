@@ -3802,7 +3802,7 @@ static void laog__pre_thread_acquires_lock (
          tl_assert(found->src_ec);
          tl_assert(found->dst_ec);
          HG_(record_error_LockOrder)( 
-            thr, lk->guestaddr, other->guestaddr,
+            thr, lk, other,
                  found->src_ec, found->dst_ec, other->acquired_at );
       } else {
          /* Hmm.  This can't happen (can it?) */
@@ -3852,7 +3852,7 @@ static void laog__pre_thread_acquires_lock (
             held by this thread, with its 'acquired_at'. */
                     
          HG_(record_error_LockOrder)(
-            thr, lk->guestaddr, other->guestaddr,
+            thr, lk, other,
                  NULL, NULL, other->acquired_at );
       }
    }
@@ -4475,6 +4475,7 @@ static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
    if (VG_STREQ(soname, VG_U_LD_LINUX_SO_2))        return True;
    if (VG_STREQ(soname, VG_U_LD_LINUX_X86_64_SO_2)) return True;
    if (VG_STREQ(soname, VG_U_LD64_SO_1))            return True;
+   if (VG_STREQ(soname, VG_U_LD64_SO_2))            return True;
    if (VG_STREQ(soname, VG_U_LD_SO_1))              return True;
 #  elif defined(VGO_darwin)
    if (VG_STREQ(soname, VG_U_DYLD)) return True;

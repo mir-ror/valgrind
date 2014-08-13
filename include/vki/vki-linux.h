@@ -85,7 +85,7 @@
 #  include "vki-posixtypes-amd64-linux.h"
 #elif defined(VGA_ppc32)
 #  include "vki-posixtypes-ppc32-linux.h"
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  include "vki-posixtypes-ppc64-linux.h"
 #elif defined(VGA_arm)
 #  include "vki-posixtypes-arm-linux.h"
@@ -211,7 +211,7 @@ typedef unsigned int	        vki_uint;
 #  include "vki-amd64-linux.h"
 #elif defined(VGA_ppc32)
 #  include "vki-ppc32-linux.h"
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  include "vki-ppc64-linux.h"
 #elif defined(VGA_arm)
 #  include "vki-arm-linux.h"
@@ -682,9 +682,11 @@ __KINLINE struct vki_cmsghdr * vki_cmsg_nxthdr (struct vki_msghdr *__msg, struct
 
 #define	VKI_SCM_RIGHTS	0x01		/* rw: access rights (array of int) */
 
+#define VKI_AF_UNSPEC   0
 #define VKI_AF_UNIX	1	/* Unix domain sockets 		*/
 #define VKI_AF_INET	2	/* Internet IP Protocol		*/
 #define VKI_AF_INET6	10	/* IP version 6			*/
+#define VKI_AF_NETLINK  16
 #define VKI_AF_BLUETOOTH 31	/* Bluetooth sockets		*/
 
 #define VKI_MSG_NOSIGNAL	0x4000	/* Do not generate SIGPIPE */
@@ -754,6 +756,17 @@ struct vki_sockaddr_in6 {
 struct vki_sockaddr_un {
 	vki_sa_family_t sun_family;	/* AF_UNIX */
 	char sun_path[VKI_UNIX_PATH_MAX];	/* pathname */
+};
+
+//----------------------------------------------------------------------
+// From linux-3.15.8/include/uapi/linux/netlink.h
+//----------------------------------------------------------------------
+
+struct vki_sockaddr_nl {
+        vki_sa_family_t    nl_family;      /* AF_NETLINK   */
+        unsigned short     nl_pad;         /* zero         */
+        __vki_u32          nl_pid;         /* port ID      */
+        __vki_u32          nl_groups;      /* multicast groups mask */
 };
 
 //----------------------------------------------------------------------
@@ -1720,7 +1733,7 @@ struct vki_ppdev_frob_struct {
 #define VKI_PPSETFLAGS	_VKI_IOW(VKI_PP_IOCTL, 0x9b, int)
 
 //----------------------------------------------------------------------
-// From linux-2.6.8.1/include/linux/fs.h
+// From linux-3.16/include/uapi/linux/fs.h
 //----------------------------------------------------------------------
 
 #define VKI_BLKROSET   _VKI_IO(0x12,93)	/* set device read-only (0 = read-write) */
@@ -1736,6 +1749,7 @@ struct vki_ppdev_frob_struct {
 #define VKI_BLKBSZSET  _VKI_IOW(0x12,113,vki_size_t)
 #define VKI_BLKGETSIZE64 _VKI_IOR(0x12,114,vki_size_t) /* return device size in bytes (u64 *arg) */
 #define VKI_BLKPBSZGET _VKI_IO(0x12,123)
+#define VKI_BLKDISCARDZEROES _VKI_IO(0x12,124)
 
 #define VKI_FIBMAP	_VKI_IO(0x00,1)	/* bmap access */
 #define VKI_FIGETBSZ    _VKI_IO(0x00,2)	/* get the block size used for bmap */
@@ -3419,6 +3433,40 @@ struct vki_ethtool_ts_info {
 #define VKI_ETHTOOL_GCHANNELS	0x0000003c /* Get no of channels */
 #define VKI_ETHTOOL_SCHANNELS	0x0000003d /* Set no of channels */
 #define VKI_ETHTOOL_GET_TS_INFO	0x00000041 /* Get time stamping and PHC info */
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/lustre/lustre_user.h
+//----------------------------------------------------------------------
+
+struct vki_lu_fid {
+	__vki_u64	f_seq;
+	__vki_u32	f_oid;
+	__vki_u32	f_ver;
+};
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/lustre/lustre_idl.h
+//----------------------------------------------------------------------
+
+struct vki_getinfo_fid2path {
+	struct vki_lu_fid	gf_fid;
+	__vki_u64		gf_recno;
+	__vki_u32		gf_linkno;
+	__vki_u32		gf_pathlen;
+	char			gf_path[0];
+} __attribute__((packed));
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/linux/lustre_lib.h
+//----------------------------------------------------------------------
+
+#define OBD_IOC_DATA_TYPE               long
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/lustre_lib.h
+//----------------------------------------------------------------------
+
+#define VKI_OBD_IOC_FID2PATH            _VKI_IOWR ('f', 150, OBD_IOC_DATA_TYPE)
 
 #endif // __VKI_LINUX_H
 

@@ -61,7 +61,7 @@
 # define MC_SIZEOF_GUEST_STATE sizeof(VexGuestPPC32State)
 #endif
 
-#if defined(VGA_ppc64)
+#if defined(VGA_ppc64be) || defined(VGA_ppc64le)
 # include "libvex_guest_ppc64.h"
 # define MC_SIZEOF_GUEST_STATE sizeof(VexGuestPPC64State)
 #endif
@@ -150,7 +150,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 {
    /* -------------------- ppc64 -------------------- */
 
-#  if defined(VGA_ppc64)
+#  if defined(VGA_ppc64be) || defined(VGA_ppc64le)
 
 #  define GOF(_fieldname) \
       (offsetof(VexGuestPPC64State,guest_##_fieldname))
@@ -160,7 +160,6 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    Int  sz   = szB;
    Int  o    = offset;
    tl_assert(sz > 0);
-   tl_assert(host_is_big_endian());
 
    if (sz == 8 || sz == 4) {
       /* The point of this is to achieve
@@ -168,7 +167,11 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
             return GOF(GPRn);
          by testing ox instead of o, and setting ox back 4 bytes when sz == 4.
       */
+#if defined(VGA_ppc64le)
+      Int ox = o;
+#else
       Int ox = sz == 8 ? o : (o - 4);
+#endif
       if (ox == GOF(GPR0)) return ox;
       if (ox == GOF(GPR1)) return ox;
       if (ox == GOF(GPR2)) return ox;
@@ -368,7 +371,11 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
    Int  o  = offset;
    Int  sz = szB;
    tl_assert(sz > 0);
+#if defined(VGA_ppc64)
    tl_assert(host_is_big_endian());
+#elif defined(VGA_ppc64le)
+   tl_assert(host_is_little_endian());
+#endif
 
    if (o == GOF(GPR0) && sz == 4) return o;
    if (o == GOF(GPR1) && sz == 4) return o;
@@ -1282,7 +1289,7 @@ static Int get_otrack_shadow_offset_wrk ( Int offset, Int szB )
 IRType MC_(get_otrack_reg_array_equiv_int_type) ( IRRegArray* arr )
 {
    /* -------------------- ppc64 -------------------- */
-#  if defined(VGA_ppc64)
+#  if defined(VGA_ppc64be) || defined(VGA_ppc64le)
    /* The redir stack. */
    if (arr->base == offsetof(VexGuestPPC64State,guest_REDIR_STACK[0])
        && arr->elemTy == Ity_I64

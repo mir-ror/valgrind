@@ -51,6 +51,7 @@
 #include "priv_readdwarf.h"        /* 'cos ELF contains DWARF */
 #include "priv_readdwarf3.h"
 #include "priv_readstabs.h"        /* and stabs, if we're unlucky */
+#include "priv_readexidx.h"
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
 #include <elf.h>
@@ -204,19 +205,19 @@ void show_raw_elf_symbol ( DiImage* strtab_img,
    .data, size of .data + size of .bss).  I don't know if this is
    really correct/justifiable, or not.
 
-   For ppc64-linux it's more complex.  If the symbol is seen to be in
+   For ppc64be-linux it's more complex.  If the symbol is seen to be in
    the .opd section, it is taken to be a function descriptor, and so
    a dereference is attempted, in order to get hold of the real entry
    point address.  Also as part of the dereference, there is an attempt
    to calculate the TOC pointer (R2 value) associated with the symbol.
 
-   To support the ppc64-linux pre-"dotless" ABI (prior to gcc 4.0.0),
+   To support the ppc64be-linux pre-"dotless" ABI (prior to gcc 4.0.0),
    if the symbol is seen to be outside the .opd section and its name
    starts with a dot, an .opd deference is not attempted, and no TOC
    pointer is calculated, but the the leading dot is removed from the
    name.
 
-   As a result, on ppc64-linux, the caller of this function may have
+   As a result, on ppc64be-linux, the caller of this function may have
    to piece together the real size, address, name of the symbol from
    multiple calls to this function.  Ugly and confusing.
 */
@@ -229,22 +230,25 @@ Bool get_elf_symbol_info (
         DiSlice*   escn_strtab,   /* holds the name */
         Addr       sym_svma,   /* address as stated in the object file */
         Bool       symtab_in_debug, /* symbol table is in the debug file */
-        DiSlice*   escn_opd,   /* the .opd (ppc64-linux only) */
+        DiSlice*   escn_opd,   /* the .opd (ppc64be-linux only) */
         PtrdiffT   opd_bias,   /* for biasing AVMAs found in .opd */
         /* OUTPUTS */
         DiOffT* sym_name_out_ioff, /* name (in strtab) we should record */
         Addr*   sym_avma_out,   /* addr we should record */
         Int*    sym_size_out,   /* symbol size */
-        Addr*   sym_tocptr_out, /* ppc64-linux only: R2 value to be
+        Addr*   sym_tocptr_out, /* ppc64be-linux only: R2 value to be
                                    used on entry */
-        Bool*   from_opd_out,   /* ppc64-linux only: did we deref an
+        Bool*   from_opd_out,   /* ppc64be-linux only: did we deref an
                                   .opd entry? */
         Bool*   is_text_out,    /* is this a text symbol? */
-        Bool*   is_ifunc        /* is this a  STT_GNU_IFUNC function ?*/
+        Bool*   is_ifunc,       /* is this a  STT_GNU_IFUNC function ?*/
+        Addr*   sym_local_ep    /* addr for local entry point.  PPC64 LE
+                                   supports a local and global entry points.
+                                   Use this value to return the entry point. */
      )
 {
    Bool plausible;
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
    Bool is_in_opd;
 #  endif
    Bool in_text, in_data, in_sdata, in_rodata, in_bss, in_sbss;
@@ -258,6 +262,8 @@ Bool get_elf_symbol_info (
    *sym_tocptr_out    = 0; /* unknown/inapplicable */
    *from_opd_out      = False;
    *is_ifunc          = False;
+   *sym_local_ep      = 0; /* unknown/inapplicable */
+
    /* Get the symbol size, but restrict it to fit in a signed 32 bit
       int.  Also, deal with the stupid case of negative size by making
       the size be 1.  Note that sym->st_size has type UWord,
@@ -374,9 +380,9 @@ Bool get_elf_symbol_info (
    }
 #  endif
 
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
    /* Allow STT_NOTYPE in the very special case where we're running on
-      ppc64-linux and the symbol is one which the .opd-chasing hack
+      ppc64be-linux and the symbol is one which the .opd-chasing hack
       below will chase. */
    if (!plausible
        && *is_text_out
@@ -473,7 +479,7 @@ Bool get_elf_symbol_info (
       return False;
    }
 
-   /* ppc64-linux nasty hack: if the symbol is in an .opd section,
+   /* ppc64be-linux nasty hack: if the symbol is in an .opd section,
       then really what we have is the address of a function
       descriptor.  So use the first word of that as the function's
       text.
@@ -481,7 +487,8 @@ Bool get_elf_symbol_info (
       See thread starting at
       http://gcc.gnu.org/ml/gcc-patches/2004-08/msg00557.html
    */
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
+   /* Host and guest may have different Endianess, used by BE only */
    is_in_opd = False;
 #  endif
 
@@ -489,7 +496,7 @@ Bool get_elf_symbol_info (
        && di->opd_size > 0
        && *sym_avma_out >= di->opd_avma
        && *sym_avma_out <  di->opd_avma + di->opd_size) {
-#     if !defined(VGP_ppc64_linux)
+#     if !defined(VGP_ppc64be_linux)
       if (TRACE_SYMTAB_ENABLED) {
          HChar* sym_name = ML_(img_strdup)(escn_strtab->img,
                                            "di.gesi.6", sym_name_ioff);
@@ -584,7 +591,7 @@ Bool get_elf_symbol_info (
 
    /* Here's yet another ppc64-linux hack.  Get rid of leading dot if
       the symbol is outside .opd. */
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64be_linux)
    if (di->opd_size > 0
        && !is_in_opd
        && *sym_name_out_ioff != DiOffT_INVALID
@@ -668,14 +675,57 @@ Bool get_elf_symbol_info (
       }
    }
 
-#  if defined(VGP_ppc64_linux)
-   /* It's crucial that we never add symbol addresses in the .opd
-      section.  This would completely mess up function redirection and
-      intercepting.  This assert ensures that any symbols that make it
-      into the symbol table on ppc64-linux don't point into .opd. */
+#  if defined(VGP_ppc64be_linux)
    if (di->opd_present && di->opd_size > 0) {
       vg_assert(*sym_avma_out + *sym_size_out <= di->opd_avma
                 || *sym_avma_out >= di->opd_avma + di->opd_size);
+   }
+#endif
+
+#  if defined(VGP_ppc64le_linux)
+   /* PPC64 LE ABI uses three bits in the st_other field to indicate the number
+    * of instructions between the function's global and local entry points. An
+    * offset of 0 indicates that there is one entry point.  The value must be:
+    *
+    * 0 - one entry point, local and global are the same
+    * 1 - reserved
+    * 2 - local entry point is one instruction after the global entry point
+    * 3 - local entry point is two instructions after the global entry point
+    * 4 - local entry point is four instructions after the global entry point
+    * 5 - local entry point is eight instructions after the global entry point
+    * 6 - local entry point is sixteen instructions after the global entry point
+    * 7 - reserved
+    *
+    *  Extract the three bit field from the other field is done by:
+    *        (other_field & STO_PPC64_LOCAL_MASK) >> STO_PPC_LOCAL_BIT
+    *
+    *  where the #define values are given in include/elf/powerpc.h file for
+    *  the PPC binutils.
+    *
+    * conversion of the three bit field to bytes is given by
+    *
+    *       ((1 << bit_field) >> 2) << 2
+    */
+
+   #define STO_PPC64_LOCAL_BIT             5
+   #define STO_PPC64_LOCAL_MASK            (7 << STO_PPC64_LOCAL_BIT)
+   {
+      unsigned int bit_field, dist_to_local_entry;
+      /* extract the other filed */
+      bit_field = (sym->st_other & STO_PPC64_LOCAL_MASK) >> STO_PPC64_LOCAL_BIT;
+
+      if ((bit_field > 0) && (bit_field < 7)) {
+         /* store the local entry point address */
+         dist_to_local_entry = ((1 << bit_field) >> 2) << 2;
+         *sym_local_ep = *sym_avma_out + dist_to_local_entry;
+
+         if (TRACE_SYMTAB_ENABLED) {
+            HChar* sym_name = ML_(img_strdup)(escn_strtab->img,
+                                             "di.gesi.5", sym_name_ioff);
+            VG_(printf)("Local entry point: %s at %#010x\n",
+			sym_name, (unsigned int)*sym_local_ep);
+         }
+      }
    }
 #  endif
 
@@ -685,14 +735,14 @@ Bool get_elf_symbol_info (
 
 
 /* Read an ELF symbol table (normal or dynamic).  This one is for the
-   "normal" case ({x86,amd64,ppc32,arm,mips32,mips64}-linux). */
+   "normal" case ({x86,amd64,ppc32,arm,mips32,mips64, ppc64le}-linux). */
 static
 __attribute__((unused)) /* not referred to on all targets */
 void read_elf_symtab__normal( 
         struct _DebugInfo* di, const HChar* tab_name,
         DiSlice*   escn_symtab,
         DiSlice*   escn_strtab,
-        DiSlice*   escn_opd, /* ppc64-linux only */ 
+        DiSlice*   escn_opd, /* ppc64be-linux only */
         Bool       symtab_in_debug
      )
 {
@@ -724,6 +774,7 @@ void read_elf_symtab__normal(
       Addr   sym_avma_really = 0;
       Int    sym_size = 0;
       Addr   sym_tocptr = 0;
+      Addr   local_ep = 0;
       Bool   from_opd = False, is_text = False, is_ifunc = False;
       DiOffT sym_name_really = DiOffT_INVALID;
       if (get_elf_symbol_info(di, &sym, sym_name, escn_strtab, 
@@ -733,7 +784,8 @@ void read_elf_symtab__normal(
                               &sym_avma_really,
                               &sym_size,
                               &sym_tocptr,
-                              &from_opd, &is_text, &is_ifunc)) {
+                              &from_opd, &is_text, &is_ifunc,
+                              &local_ep)) {
 
          DiSym  disym;
          VG_(memset)(&disym, 0, sizeof(disym));
@@ -741,6 +793,7 @@ void read_elf_symtab__normal(
                                        "di.res__n.1", sym_name_really);
          disym.addr      = sym_avma_really;
          disym.tocptr    = sym_tocptr;
+         disym.local_ep  = local_ep;
          disym.pri_name  = ML_(addStr) ( di, cstr, -1 );
          disym.sec_names = NULL;
          disym.size      = sym_size;
@@ -748,7 +801,7 @@ void read_elf_symtab__normal(
          disym.isIFunc   = is_ifunc;
          if (cstr) { ML_(dinfo_free)(cstr); cstr = NULL; }
          vg_assert(disym.pri_name);
-         vg_assert(disym.tocptr == 0); /* has no role except on ppc64-linux */
+         vg_assert(disym.tocptr == 0); /* has no role except on ppc64be-linux */
          ML_(addSym) ( di, &disym );
 
          if (TRACE_SYMTAB_ENABLED) {
@@ -760,6 +813,10 @@ void read_elf_symtab__normal(
                          (Int)disym.size,
                          (HChar*)disym.pri_name
             );
+	    if (local_ep != 0) {
+               TRACE_SYMTAB("               local entry point %#010lx\n",
+                            local_ep)
+	    }
          }
 
       }
@@ -768,7 +825,7 @@ void read_elf_symtab__normal(
 
 
 /* Read an ELF symbol table (normal or dynamic).  This one is for
-   ppc64-linux, which requires special treatment. */
+   ppc64be-linux, which requires special treatment. */
 
 typedef
    struct { 
@@ -806,7 +863,7 @@ static Word cmp_TempSymKey ( TempSymKey* key1, TempSym* elem2 )
 
 static
 __attribute__((unused)) /* not referred to on all targets */
-void read_elf_symtab__ppc64_linux( 
+void read_elf_symtab__ppc64be_linux(
         struct _DebugInfo* di, const HChar* tab_name,
         DiSlice*   escn_symtab,
         DiSlice*   escn_strtab,
@@ -830,7 +887,7 @@ void read_elf_symtab__ppc64_linux(
       return;
    }
 
-   TRACE_SYMTAB("\n--- Reading (ELF, ppc64-linux) %s (%lld entries) ---\n",
+   TRACE_SYMTAB("\n--- Reading (ELF, ppc64be-linux) %s (%lld entries) ---\n",
                 tab_name, escn_symtab->szB/sizeof(ElfXX_Sym) );
 
    oset = VG_(OSetGen_Create)( offsetof(TempSym,key), 
@@ -855,6 +912,7 @@ void read_elf_symtab__ppc64_linux(
       Addr   sym_avma_really = 0;
       Int    sym_size = 0;
       Addr   sym_tocptr = 0;
+      Addr   sym_local_ep = 0;
       Bool   from_opd = False, is_text = False, is_ifunc = False;
       DiOffT sym_name_really = DiOffT_INVALID;
       DiSym  disym;
@@ -866,7 +924,8 @@ void read_elf_symtab__ppc64_linux(
                               &sym_avma_really,
                               &sym_size,
                               &sym_tocptr,
-                              &from_opd, &is_text, &is_ifunc)) {
+                              &from_opd, &is_text, &is_ifunc,
+                              &sym_local_ep)) {
 
          /* Check if we've seen this (name,addr) key before. */
          key.addr = sym_avma_really;
@@ -2117,7 +2176,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             BAD(".plt");
          }
       }
-#     elif defined(VGP_ppc64_linux)
+#     elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
       /* Accept .plt where mapped as rw (data), or unmapped */
       if (0 == VG_(strcmp)(name, ".plt")) {
          if (inrw && !di->plt_present) {
@@ -2176,6 +2235,50 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          }
       }
 
+      /* Accept .ARM.exidx where mapped as rx (code). */
+      /* FIXME: make sure the entire section is mapped in, not just
+         the first address. */
+      if (0 == VG_(strcmp)(name, ".ARM.exidx")) {
+         if (inrx && !di->exidx_present) {
+            di->exidx_present = True;
+            di->exidx_svma = svma;
+            di->exidx_avma = svma + inrx->bias;
+            di->exidx_size = size;
+            di->exidx_bias = inrx->bias;
+            TRACE_SYMTAB("acquiring .exidx svma = %#lx .. %#lx\n",
+                         di->exidx_svma, 
+                         di->exidx_svma + di->exidx_size - 1);
+            TRACE_SYMTAB("acquiring .exidx avma = %#lx .. %#lx\n",
+                         di->exidx_avma, 
+                         di->exidx_avma + di->exidx_size - 1);
+            TRACE_SYMTAB("acquiring .exidx bias = %#lx\n", di->exidx_bias);
+         } else {
+            BAD(".ARM.exidx");
+         }
+      }
+
+      /* Accept .ARM.extab where mapped as rx (code). */
+      /* FIXME: make sure the entire section is mapped in, not just
+         the first address. */
+      if (0 == VG_(strcmp)(name, ".ARM.extab")) {
+         if (inrx && !di->extab_present) {
+            di->extab_present = True;
+            di->extab_svma = svma;
+            di->extab_avma = svma + inrx->bias;
+            di->extab_size = size;
+            di->extab_bias = inrx->bias;
+            TRACE_SYMTAB("acquiring .extab svma = %#lx .. %#lx\n",
+                         di->extab_svma, 
+                         di->extab_svma + di->extab_size - 1);
+            TRACE_SYMTAB("acquiring .extab avma = %#lx .. %#lx\n",
+                         di->extab_avma, 
+                         di->extab_avma + di->extab_size - 1);
+            TRACE_SYMTAB("acquiring .extab bias = %#lx\n", di->extab_bias);
+         } else {
+            BAD(".ARM.extab");
+         }
+      }
+
       ML_(dinfo_free)(name);
 
 #     undef BAD
@@ -2230,7 +2333,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       DiSlice dwarf1d_escn        = DiSlice_INVALID; // .debug        (dwarf1)
       DiSlice dwarf1l_escn        = DiSlice_INVALID; // .line         (dwarf1)
       DiSlice opd_escn            = DiSlice_INVALID; // .opd (dwarf2, 
-                                                     //       ppc64-linux)
+                                                     //       ppc64be-linux)
       DiSlice ehframe_escn[N_EHFRAME_SECTS];         // .eh_frame (dwarf2)
 
       for (i = 0; i < N_EHFRAME_SECTS; i++)
@@ -2729,13 +2832,14 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       vg_assert((dynsym_escn.szB % sizeof(ElfXX_Sym)) == 0);
       vg_assert((symtab_escn.szB % sizeof(ElfXX_Sym)) == 0);
 
+      /* TOPLEVEL */
       /* Read symbols */
       {
          void (*read_elf_symtab)(struct _DebugInfo*, const HChar*,
                                  DiSlice*, DiSlice*, DiSlice*, Bool);
          Bool symtab_in_debug;
-#        if defined(VGP_ppc64_linux)
-         read_elf_symtab = read_elf_symtab__ppc64_linux;
+#        if defined(VGP_ppc64be_linux)
+         read_elf_symtab = read_elf_symtab__ppc64be_linux;
 #        else
          read_elf_symtab = read_elf_symtab__normal;
 #        endif
@@ -2746,7 +2850,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          read_elf_symtab(di, "dynamic symbol table",
                          &dynsym_escn, &dynstr_escn, &opd_escn,
                          False);
-      } /* Read symbols */
+      }
 
       /* TOPLEVEL */
       /* Read .eh_frame and .debug_frame (call-frame-info) if any.  Do
@@ -2777,17 +2881,20 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          seems OK though.  Also skip on Android. */
 #     if !defined(VGP_amd64_linux) \
          && !defined(VGP_s390x_linux) \
-         && !defined(VGP_ppc64_linux) \
+         && !defined(VGP_ppc64be_linux) \
+         && !defined(VGP_ppc64le_linux) \
          && !defined(VGPV_arm_linux_android) \
          && !defined(VGPV_x86_linux_android) \
          && !defined(VGP_mips64_linux)
-#if 0
-      if (stab_img && stabstr_img) {
-         ML_(read_debuginfo_stabs) ( di, stab_img, stab_sz, 
-                                         stabstr_img, stabstr_sz );
-      }
-#endif
+      // JRS 31 July 2014: stabs reading is currently broken and
+      // therefore deactivated.
+      //if (stab_img && stabstr_img) {
+      //   ML_(read_debuginfo_stabs) ( di, stab_img, stab_sz, 
+      //                                   stabstr_img, stabstr_sz );
+      //}
 #     endif
+
+      /* TOPLEVEL */
       /* jrs 2006-01-01: icc-8.1 has been observed to generate
          binaries without debug_str sections.  Don't preclude
          debuginfo reading for that reason, but, in
@@ -2820,13 +2927,50 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             );
          }
       }
-#if 0
-      if (dwarf1d_img && dwarf1l_img) {
-         ML_(read_debuginfo_dwarf1) ( di, dwarf1d_img, dwarf1d_sz, 
-                                          dwarf1l_img, dwarf1l_sz );
-      }
-#endif
+
       /* TOPLEVEL */
+      // JRS 31 July 2014: dwarf-1 reading is currently broken and
+      // therefore deactivated.
+      //if (dwarf1d_img && dwarf1l_img) {
+      //   ML_(read_debuginfo_dwarf1) ( di, dwarf1d_img, dwarf1d_sz, 
+      //                                    dwarf1l_img, dwarf1l_sz );
+      //}
+
+#     if defined(VGA_arm)
+      /* TOPLEVEL */
+      /* ARM32 only: read .exidx/.extab if present.  Note we are
+         reading these directly out of the mapped in (running) image.
+         Also, read these only if no CFI based unwind info was
+         acquired for this file.
+
+         An .exidx section is always required, but the .extab section
+         can be optionally omitted, provided that .exidx does not
+         refer to it.  If the .exidx is erroneous and does refer to
+         .extab even though .extab is missing, the range checks done
+         by GET_EX_U32 in ExtabEntryExtract in readexidx.c should
+         prevent any invalid memory accesses, and cause the .extab to
+         be rejected as invalid.
+
+         FIXME:
+         * check with m_aspacemgr that the entire [exidx_avma, +exidx_size)
+           and [extab_avma, +extab_size) areas are readable, since we're
+           reading this stuff out of the running image (not from a file/socket)
+           and we don't want to segfault.
+         * DebugInfo::exidx_bias and use text_bias instead.
+           I think it's always the same.
+         * remove DebugInfo::{extab_bias, exidx_svma, extab_svma} since
+           they are never used.
+      */
+      if (di->exidx_present
+          && di->cfsi_used == 0
+          && di->text_present && di->text_size > 0) {
+         Addr text_last_svma = di->text_svma + di->text_size - 1;
+         ML_(read_exidx)( di, (UChar*)di->exidx_avma, di->exidx_size,
+                              (UChar*)di->extab_avma, di->extab_size,
+                              text_last_svma,
+                              di->exidx_bias );
+      }
+#     endif /* defined(VGA_arm) */
 
    } /* "Find interesting sections, read the symbol table(s), read any debug
         information" (a local scope) */

@@ -495,6 +495,7 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
       VG_(close)(interp->fd);
 
       entry = (void *)(advised - interp_addr + interp->e.e_entry);
+
       info->interp_offset = advised - interp_addr;
 
       VG_(free)(interp->p);
@@ -505,15 +506,19 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    info->exe_base = minaddr + ebase;
    info->exe_end  = maxaddr + ebase;
 
-#if defined(VGP_ppc64_linux)
-   /* On PPC64, a func ptr is represented by a TOC entry ptr.  This
-      TOC entry contains three words; the first word is the function
+#if defined(VGP_ppc64be_linux)
+   /* On PPC64BE, ELF ver 1, a func ptr is represented by a TOC entry ptr.
+      This TOC entry contains three words; the first word is the function
       address, the second word is the TOC ptr (r2), and the third word
       is the static chain value. */
    info->init_ip  = ((ULong*)entry)[0];
    info->init_toc = ((ULong*)entry)[1];
    info->init_ip  += info->interp_offset;
    info->init_toc += info->interp_offset;
+#elif defined(VGP_ppc64le_linux)
+   /* On PPC64LE, ELF ver 2. API doesn't use a func ptr */
+   info->init_ip  = (Addr)entry;
+   info->init_toc = 0; /* meaningless on this platform */
 #else
    info->init_ip  = (Addr)entry;
    info->init_toc = 0; /* meaningless on this platform */

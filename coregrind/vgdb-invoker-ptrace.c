@@ -862,7 +862,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
    sp = user_mod.sp;
 #elif defined(VGA_ppc32)
    sp = user_mod.regs.gpr[1];
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
    sp = user_mod.regs.gpr[1];
 #elif defined(VGA_s390x)
    sp = user_mod.regs.gprs[15];
@@ -926,7 +926,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       I_die_here : not x86 or amd64 in x86/amd64 section/
 #endif
 
-#elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
       user_mod.regs.nip = shared32->invoke_gdbserver;
       user_mod.regs.trap = -1L;
       /* put check arg in register 3 */
@@ -1003,7 +1003,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
 
 #elif defined(VGA_ppc32)
       assert(0); // cannot vgdb a 64 bits executable with a 32 bits exe
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be)
       Addr64 func_addr;
       Addr64 toc_addr;
       int rw;
@@ -1029,6 +1029,16 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       user_mod.regs.gpr[1] = sp - 220;
       user_mod.regs.gpr[2] = toc_addr;
       user_mod.regs.nip = func_addr;
+      user_mod.regs.trap = -1L;
+      /* put check arg in register 3 */
+      user_mod.regs.gpr[3] = check;
+      /* put bad_return return address in Link Register */
+      user_mod.regs.link = bad_return;
+#elif defined(VGA_ppc64le)
+      /* LE does not use the function pointer structure used in BE */
+      user_mod.regs.nip = shared64->invoke_gdbserver;
+      user_mod.regs.gpr[1] = sp - 512;
+      user_mod.regs.gpr[12] = user_mod.regs.nip;
       user_mod.regs.trap = -1L;
       /* put check arg in register 3 */
       user_mod.regs.gpr[3] = check;

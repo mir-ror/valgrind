@@ -1,4 +1,5 @@
 
+
 /*--------------------------------------------------------------------*/
 /*--- Top level management of symbols and debugging information.   ---*/
 /*---                                                  debuginfo.c ---*/
@@ -836,8 +837,8 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
       || defined(VGA_mips64)
    is_rx_map = seg->hasR && seg->hasX;
    is_rw_map = seg->hasR && seg->hasW;
-#  elif defined(VGA_amd64) || defined(VGA_ppc64) || defined(VGA_arm) \
-        || defined(VGA_arm64)
+#  elif defined(VGA_amd64) || defined(VGA_ppc64be) || defined(VGA_ppc64le)  \
+        || defined(VGA_arm) || defined(VGA_arm64)
    is_rx_map = seg->hasR && seg->hasX && !seg->hasW;
    is_rw_map = seg->hasR && seg->hasW && !seg->hasX;
 #  elif defined(VGP_s390x_linux)
@@ -1681,7 +1682,7 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
    return True;
 }
 
-/* ppc64-linux only: find the TOC pointer (R2 value) that should be in
+/* ppc64be-linux only: find the TOC pointer (R2 value) that should be in
    force at the entry point address of the function containing
    guest_code_addr.  Returns 0 if not known. */
 Addr VG_(get_tocptr) ( Addr guest_code_addr )
@@ -1909,7 +1910,6 @@ Bool VG_(get_filename)( Addr a, HChar** filename )
    DebugInfo* si;
    Word       locno;
    UInt       fndn_ix;
-   FnDn*      fndn;
 
    search_all_loctabs ( a, &si, &locno );
    if (si == NULL) {
@@ -1917,22 +1917,25 @@ Bool VG_(get_filename)( Addr a, HChar** filename )
       return False;
    }
    fndn_ix = ML_(fndn_ix) (si, locno);
-   if (fndn_ix == 0)
-      *filename = (HChar *)"???";    // FIXME: constification
-   else {
-      static SizeT bufsiz = 0;
-      static HChar *buf = NULL;
-      SizeT need;
-      fndn = VG_(indexEltNumber) (si->fndnpool, fndn_ix);
-      need = VG_(strlen)(fndn->filename) + 1;
-      if (need < 256) need = 256;
-      if (need > bufsiz) {
-         bufsiz = need;
-         buf = ML_(dinfo_realloc)("get_filename", buf, bufsiz);
-      }
-      VG_(strcpy)(buf, fndn->filename);
-      *filename = buf;
+
+   // This string is not persistent. It would not survive a dlclose of the
+   // shared object to which the file belonged. The reason is that the
+   // associated debuginfo will be freed and the stringpool hangs off that.
+   const HChar *fname = ML_(fndn_ix2filename) (si, fndn_ix);
+
+   static SizeT bufsiz = 0;
+   static HChar *buf = NULL;
+   SizeT need;
+
+   need = VG_(strlen)(fname) + 1;
+   if (need > bufsiz) {
+     if (need < 256) need = 256;
+     bufsiz = need;
+     buf = ML_(dinfo_realloc)("get_filename", buf, bufsiz);
    }
+   VG_(strcpy)(buf, fname);
+   *filename = buf;
+
    return True;
 }
 
@@ -1961,7 +1964,6 @@ Bool VG_(get_filename_linenum) ( Addr a,
    DebugInfo* si;
    Word       locno;
    UInt       fndn_ix;
-   FnDn*      fndn = NULL;
 
    vg_assert( (dirname == NULL && dirname_available == NULL)
               ||
@@ -1977,26 +1979,18 @@ Bool VG_(get_filename_linenum) ( Addr a,
    }
 
    fndn_ix = ML_(fndn_ix)(si, locno);
-   if (fndn_ix == 0)
-      VG_(strncpy_safely)(filename, "???", n_filename);
-   else {
-      fndn = VG_(indexEltNumber) (si->fndnpool, fndn_ix);
-      VG_(strncpy_safely)(filename, fndn->filename, n_filename);
-   }
+   VG_(strncpy_safely)(filename,
+                       ML_(fndn_ix2filename) (si, fndn_ix),
+                       n_filename);
    *lineno = si->loctab[locno].lineno;
 
    if (dirname) {
       /* caller wants directory info too .. */
       vg_assert(n_dirname > 0);
-      if (fndn_ix != 0 && fndn->dirname) {
-         /* .. and we have some */
-         *dirname_available = True;
-         VG_(strncpy_safely)(dirname, fndn->dirname, n_dirname);
-      } else {
-         /* .. but we don't have any */
-         *dirname_available = False;
-         *dirname = 0;
-      }
+      VG_(strncpy_safely)(dirname,
+                          ML_(fndn_ix2dirname) (si, fndn_ix),
+                          n_dirname);
+      *dirname_available = *dirname != 0;
    }
 
    return True;
@@ -2179,11 +2173,21 @@ HChar* VG_(describe_IP)(Addr eip, HChar* buf, Int n_buf, InlIPCursor *iipc)
          ? & iipc->di->inltab[iipc->cur_inltab]
          : NULL;
       vg_assert (cur_inl);
-      // The filename and lineno for the inlined fn caller is in cur_inl.
-      VG_(snprintf) (buf_srcloc, BUF_LEN, "%s", cur_inl->filename);
-      lineno = cur_inl->lineno;
 
       know_dirinfo = False;
+      // The fndn_ix and lineno for the caller of the inlined fn is in cur_inl.
+      if (cur_inl->fndn_ix == 0) {
+         VG_(snprintf) (buf_srcloc, BUF_LEN, "???");
+      } else {
+         FnDn *fndn = VG_(indexEltNumber) (iipc->di->fndnpool,
+                                           cur_inl->fndn_ix);
+         if (fndn->dirname) {
+            VG_(snprintf) (buf_dirname, BUF_LEN, "%s", fndn->dirname);
+            know_dirinfo = True;
+         }
+         VG_(snprintf) (buf_srcloc, BUF_LEN, "%s", fndn->filename);
+      }
+      lineno = cur_inl->lineno;
       know_srcloc = True;
    }
 
@@ -2383,6 +2387,7 @@ UWord evalCfiExpr ( XArray* exprs, Int ix,
             case Creg_ARM_R14: return eec->uregs->r14;
             case Creg_ARM_R13: return eec->uregs->r13;
             case Creg_ARM_R12: return eec->uregs->r12;
+            case Creg_ARM_R7:  return eec->uregs->r7;
 #           elif defined(VGA_s390x)
             case Creg_IA_IP: return eec->uregs->ia;
             case Creg_IA_SP: return eec->uregs->sp;
@@ -2393,7 +2398,8 @@ UWord evalCfiExpr ( XArray* exprs, Int ix,
             case Creg_IA_SP: return eec->uregs->sp;
             case Creg_IA_BP: return eec->uregs->fp;
             case Creg_MIPS_RA: return eec->uregs->ra;
-#           elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#           elif defined(VGA_ppc32) || defined(VGA_ppc64be) \
+               || defined(VGA_ppc64le)
 #           elif defined(VGP_arm64_linux)
             case Creg_ARM64_X30: return eec->uregs->x30;
 #           else
@@ -2643,7 +2649,7 @@ static Addr compute_cfa ( D3UnwindRegs* uregs,
       case CFIC_IA_BPREL:
          cfa = cfsi_m->cfa_off + uregs->fp;
          break;
-#     elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#     elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #     elif defined(VGP_arm64_linux)
       case CFIC_ARM64_SPREL: 
          cfa = cfsi_m->cfa_off + uregs->sp;
@@ -2751,7 +2757,7 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
    ipHere = uregsHere->ia;
 #  elif defined(VGA_mips32) || defined(VGA_mips64)
    ipHere = uregsHere->pc;
-#  elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  elif defined(VGP_arm64_linux)
    ipHere = uregsHere->pc;
 #  else
@@ -2833,7 +2839,7 @@ Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregsHere,
    COMPUTE(uregsPrev.pc, uregsHere->pc, cfsi_m->ra_how, cfsi_m->ra_off);
    COMPUTE(uregsPrev.sp, uregsHere->sp, cfsi_m->sp_how, cfsi_m->sp_off);
    COMPUTE(uregsPrev.fp, uregsHere->fp, cfsi_m->fp_how, cfsi_m->fp_off);
-#  elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  elif defined(VGP_arm64_linux)
    COMPUTE(uregsPrev.pc,  uregsHere->pc,  cfsi_m->ra_how,  cfsi_m->ra_off);
    COMPUTE(uregsPrev.sp,  uregsHere->sp,  cfsi_m->sp_how,  cfsi_m->sp_off);
@@ -3073,6 +3079,7 @@ static Bool data_address_is_in_var ( /*OUT*/PtrdiffT* offset,
 static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
                              /*MOD*/XArray* /* of HChar */ dn2,
                              Addr     data_addr,
+                             DebugInfo* di,
                              DiVariable* var,
                              PtrdiffT var_offset,
                              PtrdiffT residual_offset,
@@ -3086,6 +3093,9 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
    const HChar* ro_plural = residual_offset == 1 ? "" : "s";
    const HChar* basetag   = "auxwhat"; /* a constant */
    HChar tagL[32], tagR[32], xagL[32], xagR[32];
+   const HChar *fileName = ML_(fndn_ix2filename)(di, var->fndn_ix);
+   // fileName will be "???" if var->fndn_ix == 0.
+   // fileName will only be used if have_descr is True.
 
    if (frameNo < -1) {
       vg_assert(0); /* Not allowed */
@@ -3102,7 +3112,7 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
    vg_assert(var && var->name);
    have_descr = VG_(sizeXA)(described) > 0
                 && *(UChar*)VG_(indexXA)(described,0) != '\0';
-   have_srcloc = var->fileName && var->lineNo > 0;
+   have_srcloc = var->fndn_ix > 0 && var->lineNo > 0;
 
    tagL[0] = tagR[0] = xagL[0] = xagR[0] = 0;
    if (xml) {
@@ -3160,12 +3170,12 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
          TXTL( dn2 );
          p2XA( dn2,
                "declared at %pS:%d, in frame #%d of thread %d",
-               var->fileName, var->lineNo, frameNo, (Int)tid );
+               fileName, var->lineNo, frameNo, (Int)tid );
          TXTR( dn2 );
          // FIXME: also do <dir>
          p2XA( dn2,
                " <file>%pS</file> <line>%d</line> ", 
-               var->fileName, var->lineNo );
+               fileName, var->lineNo );
          XAGR( dn2 );
       } else {
          p2XA( dn1,
@@ -3173,7 +3183,7 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
                data_addr, var_offset, vo_plural, var->name );
          p2XA( dn2,
                "declared at %s:%d, in frame #%d of thread %d",
-               var->fileName, var->lineNo, frameNo, (Int)tid );
+               fileName, var->lineNo, frameNo, (Int)tid );
       }
    }
    else
@@ -3217,12 +3227,12 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
          TXTL( dn2 );
          p2XA( dn2,
                "declared at %pS:%d, in frame #%d of thread %d",
-               var->fileName, var->lineNo, frameNo, (Int)tid );
+               fileName, var->lineNo, frameNo, (Int)tid );
          TXTR( dn2 );
          // FIXME: also do <dir>
          p2XA( dn2,
                " <file>%pS</file> <line>%d</line> ",
-               var->fileName, var->lineNo );
+               fileName, var->lineNo );
          XAGR( dn2 );
       } else {
          p2XA( dn1,
@@ -3231,7 +3241,7 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
                (HChar*)(VG_(indexXA)(described,0)) );
          p2XA( dn2,
                "declared at %s:%d, in frame #%d of thread %d",
-               var->fileName, var->lineNo, frameNo, (Int)tid );
+               fileName, var->lineNo, frameNo, (Int)tid );
       }
    }
    else
@@ -3268,12 +3278,12 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
          TXTL( dn2 );
          p2XA( dn2,
                "declared at %pS:%d",
-               var->fileName, var->lineNo);
+               fileName, var->lineNo);
          TXTR( dn2 );
          // FIXME: also do <dir>
          p2XA( dn2,
                " <file>%pS</file> <line>%d</line> ",
-               var->fileName, var->lineNo );
+               fileName, var->lineNo );
          XAGR( dn2 );
       } else {
          p2XA( dn1,
@@ -3281,7 +3291,7 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
                data_addr, var_offset, vo_plural, var->name );
          p2XA( dn2,
                "declared at %s:%d",
-               var->fileName, var->lineNo);
+               fileName, var->lineNo);
       }
    }
    else
@@ -3325,12 +3335,12 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
          TXTL( dn2 );
          p2XA( dn2,
                "a global variable declared at %pS:%d",
-               var->fileName, var->lineNo);
+               fileName, var->lineNo);
          TXTR( dn2 );
          // FIXME: also do <dir>
          p2XA( dn2,
                " <file>%pS</file> <line>%d</line> ",
-               var->fileName, var->lineNo );
+               fileName, var->lineNo );
          XAGR( dn2 );
       } else {
          p2XA( dn1,
@@ -3339,7 +3349,7 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
                (HChar*)(VG_(indexXA)(described,0)) );
          p2XA( dn2,
                "a global variable declared at %s:%d",
-               var->fileName, var->lineNo);
+               fileName, var->lineNo);
       }
    }
    else 
@@ -3474,7 +3484,7 @@ Bool consider_vars_in_frame ( /*MOD*/XArray* /* of HChar */ dname1,
                                                     di->admin_tyents, 
                                                     var->typeR, offset );
             format_message( dname1, dname2,
-                            data_addr, var, offset, residual_offset,
+                            data_addr, di, var, offset, residual_offset,
                             described, frameNo, tid );
             VG_(deleteXA)( described );
             return True;
@@ -3582,7 +3592,7 @@ Bool VG_(get_data_description)(
                                                     di->admin_tyents,
                                                     var->typeR, offset );
             format_message( dname1, dname2,
-                            data_addr, var, offset, residual_offset,
+                            data_addr, di, var, offset, residual_offset,
                             described, -1/*frameNo*/,
                             VG_INVALID_THREADID );
             VG_(deleteXA)( described );
@@ -4033,8 +4043,8 @@ void* /* really, XArray* of GlobalBlock */
             tl_assert(var->name);
             tl_assert(di->soname);
             if (0) VG_(printf)("XXXX %s %s %d\n", var->name,
-                                var->fileName?(HChar*)var->fileName
-                                             :"??",var->lineNo);
+                               ML_(fndn_ix2filename)(di, var->fndn_ix),
+                               var->lineNo);
             VG_(memset)(&gb, 0, sizeof(gb));
             gb.addr  = res.word;
             gb.szB   = (SizeT)mul.ul;
@@ -4141,6 +4151,7 @@ void VG_(DebugInfo_syms_getidx) ( const DebugInfo *si,
                                         Int idx,
                                   /*OUT*/Addr*    avma,
                                   /*OUT*/Addr*    tocptr,
+                                  /*OUT*/Addr*    local_ep,
                                   /*OUT*/UInt*    size,
                                   /*OUT*/HChar**  pri_name,
                                   /*OUT*/HChar*** sec_names,
@@ -4150,6 +4161,7 @@ void VG_(DebugInfo_syms_getidx) ( const DebugInfo *si,
    vg_assert(idx >= 0 && idx < si->symtab_used);
    if (avma)      *avma      = si->symtab[idx].addr;
    if (tocptr)    *tocptr    = si->symtab[idx].tocptr;
+   if (local_ep)  *local_ep  = si->symtab[idx].local_ep;
    if (size)      *size      = si->symtab[idx].size;
    if (pri_name)  *pri_name  = si->symtab[idx].pri_name;
    if (sec_names) *sec_names = (HChar **)si->symtab[idx].sec_names; // FIXME

@@ -71,7 +71,8 @@
 typedef 
    struct { 
       Addr    addr;    /* lowest address of entity */
-      Addr    tocptr;  /* ppc64-linux only: value that R2 should have */
+      Addr    tocptr;  /* ppc64be-linux only: value that R2 should have */
+      Addr    local_ep;  /* address for local entry point, ppc64le */
       HChar*  pri_name;  /* primary name, never NULL */
       HChar** sec_names; /* NULL, or a NULL term'd array of other names */
       // XXX: this could be shrunk (on 32-bit platforms) by using 30
@@ -140,9 +141,9 @@ typedef
       Addr   addr_hi;            /* highest address following the inlined fn */
       /* Word 3 */
       const HChar* inlinedfn;    /* inlined function name */
-      /* Word 4 */
-      const HChar* filename;     /* caller source filename */
-      /* Word 5 */
+      /* Word 4 and 5 */
+      UInt   fndn_ix;            /* index in di->fndnpool of caller source
+                                    dirname/filename */
       UInt   lineno:LINENO_BITS; /* caller line number */
       UShort level:LEVEL_BITS;   /* level of inlining */
    }
@@ -274,6 +275,8 @@ typedef
       Int   r12_off;
       Int   r11_off;
       Int   r7_off;
+      // If you add additional fields, don't forget to update the
+      // initialisation of this in readexidx.c accordingly.
    }
    DiCfSI_m;
 #elif defined(VGA_arm64)
@@ -291,7 +294,7 @@ typedef
       Int   x29_off;
    }
    DiCfSI_m;
-#elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 /* Just have a struct with the common fields in, so that code that
    processes the common fields doesn't have to be ifdef'd against
    VGP_/VGA_ symbols.  These are not used in any way on ppc32/64-linux
@@ -369,13 +372,15 @@ typedef
 
 typedef
    enum {
-      Creg_IA_SP=0x213,
+      Creg_INVALID=0x213,
+      Creg_IA_SP,
       Creg_IA_BP,
       Creg_IA_IP,
       Creg_ARM_R13,
       Creg_ARM_R12,
       Creg_ARM_R15,
       Creg_ARM_R14,
+      Creg_ARM_R7,
       Creg_ARM64_X30,
       Creg_S390_R14,
       Creg_MIPS_RA
@@ -475,8 +480,8 @@ typedef
       UWord  typeR; /* a cuOff */
       GExpr* gexpr; /* on DebugInfo.gexprs list */
       GExpr* fbGX;  /* SHARED. */
-      HChar* fileName; /* where declared; may be NULL. in
-                          DebugInfo.strpool */
+      UInt   fndn_ix; /* where declared; may be zero. index
+                         in DebugInfo.fndnpool */
       Int    lineNo;   /* where declared; may be zero. */
    }
    DiVariable;
@@ -788,6 +793,18 @@ struct _DebugInfo {
    PtrdiffT sbss_bias;
    Addr     sbss_debug_svma;
    PtrdiffT sbss_debug_bias;
+   /* .ARM.exidx -- sometimes present on arm32, containing unwind info. */
+   Bool     exidx_present;
+   Addr     exidx_avma;
+   Addr     exidx_svma;
+   SizeT    exidx_size;
+   PtrdiffT exidx_bias;
+   /* .ARM.extab -- sometimes present on arm32, containing unwind info. */
+   Bool     extab_present;
+   Addr     extab_avma;
+   Addr     extab_svma;
+   SizeT    extab_size;
+   PtrdiffT extab_bias;
    /* .plt */
    Bool   plt_present;
    Addr	  plt_avma;
@@ -800,7 +817,7 @@ struct _DebugInfo {
    Bool   gotplt_present;
    Addr   gotplt_avma;
    SizeT  gotplt_size;
-   /* .opd -- needed on ppc64-linux for finding symbols */
+   /* .opd -- needed on ppc64be-linux for finding symbols */
    Bool   opd_present;
    Addr   opd_avma;
    SizeT  opd_size;
@@ -888,7 +905,9 @@ struct _DebugInfo {
       cfsi_exprs. */
    Addr* cfsi_base;
    UInt  sizeof_cfsi_m_ix; /* size in byte of indexes stored in cfsi_m_ix. */
-   UInt* cfsi_m_ix; /* Each index occupies sizeof_cfsi_m_ix bytes. */
+   void* cfsi_m_ix; /* Each index occupies sizeof_cfsi_m_ix bytes.
+                       The void* is an UChar* or UShort* or UInt*
+                       depending on sizeof_cfsi_m_ix.  */
 
    DiCfSI* cfsi_rd; /* Only used during reading, NULL once info is read. */
                                    
@@ -975,6 +994,16 @@ extern UInt ML_(addFnDn) (struct _DebugInfo* di,
                           const HChar* filename, 
                           const HChar* dirname);  /* NULL is allowable */
 
+/* Returns the filename of the fndn pair identified by fndn_ix.
+   Returns "???" if fndn_ix is 0. */
+extern const HChar* ML_(fndn_ix2filename) (struct _DebugInfo* di,
+                                           UInt fndn_ix);
+
+/* Returns the dirname of the fndn pair identified by fndn_ix.
+   Returns "" if fndn_ix is 0 or fndn->dirname is NULL. */
+extern const HChar* ML_(fndn_ix2dirname) (struct _DebugInfo* di,
+                                          UInt fndn_ix);
+
 /* Returns the fndn_ix for the LineInfo locno in di->loctab.
    0 if filename/dirname are unknown. */
 extern UInt ML_(fndn_ix) (struct _DebugInfo* di, Word locno);
@@ -991,15 +1020,17 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    A call to the below means that inlinedfn code has been
    inlined, resulting in code from [addr_lo, addr_hi[.
    Note that addr_hi is excluded, i.e. is not part of the inlined code.
-   The call that caused this inlining is in filename/lineno (dirname
-   is not recorded).
+   fndn_ix and lineno identifies the location of the call that caused
+   this inlining.
+   fndn_ix is an index in di->fndnpool, allocated using  ML_(addFnDn).
+   Give a 0 index for an unknown filename/dirname pair.
    In case of nested inlining, a small level indicates the call
    is closer to main that a call with a higher level. */
 extern
 void ML_(addInlInfo) ( struct _DebugInfo* di, 
                        Addr addr_lo, Addr addr_hi,
                        const HChar* inlinedfn,
-                       const HChar* filename, 
+                       UInt fndn_ix,
                        Int lineno, UShort level);
 
 /* Add a CFI summary record.  The supplied DiCfSI_m is copied. */
@@ -1028,9 +1059,11 @@ extern void ML_(addVar)( struct _DebugInfo* di,
                          UWord  typeR, /* a cuOff */
                          GExpr* gexpr,
                          GExpr* fbGX, /* SHARED. */
-                         HChar* fileName, /* where decl'd - may be NULL */
+                         UInt   fndn_ix, /* where decl'd - may be zero */
                          Int    lineNo, /* where decl'd - may be zero */
                          Bool   show );
+/* Note: fndn_ix identifies a filename/dirname pair similarly to
+   ML_(addInlInfo) and ML_(addLineInfo). */
 
 /* Canonicalise the tables held by 'di', in preparation for use.  Call
    this after finishing adding entries to these tables. */

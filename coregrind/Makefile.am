@@ -222,6 +222,7 @@ noinst_HEADERS = \
 	m_debuginfo/priv_readdwarf.h	\
 	m_debuginfo/priv_readdwarf3.h	\
 	m_debuginfo/priv_readelf.h	\
+	m_debuginfo/priv_readexidx.h	\
 	m_debuginfo/priv_readmacho.h	\
 	m_debuginfo/priv_image.h	\
 	m_debuginfo/lzoconf.h		\
@@ -319,6 +320,7 @@ COREGRIND_SOURCES_COMMON = \
 	m_debuginfo/readdwarf.c \
 	m_debuginfo/readdwarf3.c \
 	m_debuginfo/readelf.c \
+	m_debuginfo/readexidx.c \
 	m_debuginfo/readmacho.c \
 	m_debuginfo/readpdb.c \
 	m_debuginfo/readstabs.c \
@@ -334,7 +336,8 @@ COREGRIND_SOURCES_COMMON = \
 	m_dispatch/dispatch-x86-linux.S \
 	m_dispatch/dispatch-amd64-linux.S \
 	m_dispatch/dispatch-ppc32-linux.S \
-	m_dispatch/dispatch-ppc64-linux.S \
+	m_dispatch/dispatch-ppc64be-linux.S \
+	m_dispatch/dispatch-ppc64le-linux.S \
 	m_dispatch/dispatch-arm-linux.S \
 	m_dispatch/dispatch-arm64-linux.S \
 	m_dispatch/dispatch-s390x-linux.S \
@@ -386,7 +389,8 @@ COREGRIND_SOURCES_COMMON = \
 	m_syswrap/syscall-x86-linux.S \
 	m_syswrap/syscall-amd64-linux.S \
 	m_syswrap/syscall-ppc32-linux.S \
-	m_syswrap/syscall-ppc64-linux.S \
+	m_syswrap/syscall-ppc64be-linux.S \
+	m_syswrap/syscall-ppc64le-linux.S \
 	m_syswrap/syscall-arm-linux.S \
 	m_syswrap/syscall-arm64-linux.S \
 	m_syswrap/syscall-s390x-linux.S \
