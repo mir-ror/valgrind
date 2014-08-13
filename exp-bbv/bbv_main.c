@@ -35,7 +35,6 @@
 #include "pub_tool_tooliface.h"
 #include "pub_tool_options.h"    /* command line options */
 
-#include "pub_tool_vki.h"        /* vki_stat */
 #include "pub_tool_libcbase.h"   /* VG_(strlen) */
 #include "pub_tool_libcfile.h"   /* VG_(write) */
 #include "pub_tool_libcprint.h"  /* VG_(printf) */
@@ -118,13 +117,10 @@ static void dumpPcFile(void)
       /*    and function name for each basic block             */
    VG_(OSetGen_ResetIter)(instr_info_table);
    while ( (bb_elem = VG_(OSetGen_Next)(instr_info_table)) ) {
-      VG_(write)(pctrace_fd,"F",1);
-      HChar buf[VG_(strlen)(bb_elem->fn_name) + 100];  // large enough
-      VG_(sprintf)( buf,":%d:%x:%s\n",
+      VG_(fdprintf)(pctrace_fd, "F:%d:%x:%s\n",
                        bb_elem->block_num,
                        (Int)bb_elem->BB_addr,
                        bb_elem->fn_name);
-      VG_(write)(pctrace_fd, buf, VG_(strlen)(buf));
    }
 
    VG_(close)(pctrace_fd);
@@ -171,23 +167,21 @@ static void handle_overflow(void)
          }
 
            /* put an entry to the bb.out file */
+         Int fd = bbv_thread[current_thread].bbtrace_fd;
 
-         VG_(write)(bbv_thread[current_thread].bbtrace_fd,"T",1);
+         VG_(fdprintf)(fd, "T");
 
          VG_(OSetGen_ResetIter)(instr_info_table);
          while ( (bb_elem = VG_(OSetGen_Next)(instr_info_table)) ) {
             if ( bb_elem->inst_counter[current_thread] != 0 ) {
-               HChar buf[32];    // large enough
-               VG_(sprintf)( buf,":%d:%d   ",
+               VG_(fdprintf)(fd, ":%d:%d   ",
                          bb_elem->block_num,
                          bb_elem->inst_counter[current_thread]);
-               VG_(write)(bbv_thread[current_thread].bbtrace_fd,
-                          buf, VG_(strlen)(buf));
                bb_elem->inst_counter[current_thread] = 0;
             }
          }
 
-         VG_(write)(bbv_thread[current_thread].bbtrace_fd,"\n",1);
+         VG_(fdprintf)(fd, "\n");
       }
 
       bbv_thread[current_thread].dyn_instr -= interval_size;
