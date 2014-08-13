@@ -294,6 +294,61 @@ void VG_(vcbprintf)( void(*char_sink)(HChar, void* opaque),
 }
 
 
+/* --------- fdprintf ---------- */
+
+/* This is like [v]fprintf, except it writes to a file handle using
+   VG_(write). */
+
+#define FDPRINTF_BUFSIZE  1024
+
+typedef struct {
+   HChar buf[FDPRINTF_BUFSIZE];
+   UInt  num_chars;   // number of characters in buf
+   Int   fd;          // file descriptor to write to
+} fdprintf_buf;
+
+
+static void add_to__fdprintf_buf ( HChar c, void *p )
+{
+   fdprintf_buf *b = p;
+
+   b->buf[b->num_chars++] = c;
+
+   if (b->num_chars == FDPRINTF_BUFSIZE) {
+      VG_(write)(b->fd, b->buf, b->num_chars);
+      b->num_chars = 0;
+   }
+}
+
+
+UInt VG_(vfdprintf) ( Int fd, const HChar *format, va_list vargs )
+{
+   Int ret;
+   fdprintf_buf b;
+
+   b.fd = fd;
+   b.num_chars = 0;
+
+   ret = VG_(debugLog_vprintf) 
+            ( add_to__fdprintf_buf, &b, format, vargs );
+
+   // Flush the buffer.
+   if (b.num_chars)
+      VG_(write)(b.fd, b.buf, b.num_chars);
+
+   return ret;
+}
+
+UInt VG_(fdprintf) ( Int fd, const HChar *format, ... )
+{
+   UInt ret;
+   va_list vargs;
+   va_start(vargs,format);
+   ret = VG_(vfdprintf)(fd, format, vargs);
+   va_end(vargs);
+   return ret;
+}
+
 /* ---------------------------------------------------------------------
    percentify()
    ------------------------------------------------------------------ */

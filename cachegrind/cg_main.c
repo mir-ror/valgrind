@@ -1384,8 +1384,6 @@ static void fprint_CC_table_and_calc_totals(void)
 {
    Int     i, fd;
    SysRes  sres;
-   // FIXME: use an xarray and VG_(xaprintf) instead 
-   HChar    buf[512];
    HChar   *currFile = NULL, *currFn = NULL;
    LineCC* lineCC;
 
@@ -1414,45 +1412,38 @@ static void fprint_CC_table_and_calc_totals(void)
 
    // "desc:" lines (giving I1/D1/LL cache configuration).  The spaces after
    // the 2nd colon makes cg_annotate's output look nicer.
-   VG_(sprintf)(buf, "desc: I1 cache:         %s\n"
+   VG_(fdprintf)(fd, "desc: I1 cache:         %s\n"
                      "desc: D1 cache:         %s\n"
                      "desc: LL cache:         %s\n",
                      I1.desc_line, D1.desc_line, LL.desc_line);
-   VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
 
    // "cmd:" line
-   VG_(strcpy)(buf, "cmd:");
-   VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
+   VG_(fdprintf)(fd, "cmd:");
    if (VG_(args_the_exename)) {
-      VG_(write)(fd, " ", 1);
-      VG_(write)(fd, VG_(args_the_exename), 
-                     VG_(strlen)( VG_(args_the_exename) ));
+      VG_(fdprintf)(fd, " %s", VG_(args_the_exename));
    }
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       HChar* arg = * (HChar**) VG_(indexXA)( VG_(args_for_client), i );
       if (arg) {
-         VG_(write)(fd, " ", 1);
-         VG_(write)(fd, arg, VG_(strlen)( arg ));
+         VG_(fdprintf)(fd, " %s", arg);
       }
    }
    // "events:" line
    if (clo_cache_sim && clo_branch_sim) {
-      VG_(sprintf)(buf, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
+      VG_(fdprintf)(fd, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
                                   "Bc Bcm Bi Bim\n");
    }
    else if (clo_cache_sim && !clo_branch_sim) {
-      VG_(sprintf)(buf, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
+      VG_(fdprintf)(fd, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
                                   "\n");
    }
    else if (!clo_cache_sim && clo_branch_sim) {
-      VG_(sprintf)(buf, "\nevents: Ir "
+      VG_(fdprintf)(fd, "\nevents: Ir "
                                   "Bc Bcm Bi Bim\n");
    }
    else {
-      VG_(sprintf)(buf, "\nevents: Ir\n");
+      VG_(fdprintf)(fd, "\nevents: Ir\n");
    }
-
-   VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
 
    // Traverse every lineCC
    VG_(OSetGen_ResetIter)(CC_table);
@@ -1465,8 +1456,7 @@ static void fprint_CC_table_and_calc_totals(void)
       // the whole strings would have to be checked.
       if ( lineCC->loc.file != currFile ) {
          currFile = lineCC->loc.file;
-         VG_(sprintf)(buf, "fl=%s\n", currFile);
-         VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
+         VG_(fdprintf)(fd, "fl=%s\n", currFile);
          distinct_files++;
          just_hit_a_new_file = True;
       }
@@ -1476,14 +1466,13 @@ static void fprint_CC_table_and_calc_totals(void)
       // in the old file, hence the just_hit_a_new_file test).
       if ( just_hit_a_new_file || lineCC->loc.fn != currFn ) {
          currFn = lineCC->loc.fn;
-         VG_(sprintf)(buf, "fn=%s\n", currFn);
-         VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
+         VG_(fdprintf)(fd, "fn=%s\n", currFn);
          distinct_fns++;
       }
 
       // Print the LineCC
       if (clo_cache_sim && clo_branch_sim) {
-         VG_(sprintf)(buf, "%u %llu %llu %llu"
+         VG_(fdprintf)(fd, "%u %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu %llu\n",
@@ -1495,7 +1484,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
       else if (clo_cache_sim && !clo_branch_sim) {
-         VG_(sprintf)(buf, "%u %llu %llu %llu"
+         VG_(fdprintf)(fd, "%u %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu\n",
                             lineCC->loc.line,
@@ -1504,7 +1493,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.mL);
       }
       else if (!clo_cache_sim && clo_branch_sim) {
-         VG_(sprintf)(buf, "%u %llu"
+         VG_(fdprintf)(fd, "%u %llu"
                              " %llu %llu %llu %llu\n",
                             lineCC->loc.line,
                             lineCC->Ir.a, 
@@ -1512,12 +1501,10 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
       else {
-         VG_(sprintf)(buf, "%u %llu\n",
+         VG_(fdprintf)(fd, "%u %llu\n",
                             lineCC->loc.line,
                             lineCC->Ir.a);
       }
-
-      VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
 
       // Update summary stats
       Ir_total.a  += lineCC->Ir.a;
@@ -1540,7 +1527,7 @@ static void fprint_CC_table_and_calc_totals(void)
    // Summary stats must come after rest of table, since we calculate them
    // during traversal.  */
    if (clo_cache_sim && clo_branch_sim) {
-      VG_(sprintf)(buf, "summary:"
+      VG_(fdprintf)(fd, "summary:"
                         " %llu %llu %llu"
                         " %llu %llu %llu"
                         " %llu %llu %llu"
@@ -1552,7 +1539,7 @@ static void fprint_CC_table_and_calc_totals(void)
                         Bi_total.b, Bi_total.mp);
    }
    else if (clo_cache_sim && !clo_branch_sim) {
-      VG_(sprintf)(buf, "summary:"
+      VG_(fdprintf)(fd, "summary:"
                         " %llu %llu %llu"
                         " %llu %llu %llu"
                         " %llu %llu %llu\n",
@@ -1561,7 +1548,7 @@ static void fprint_CC_table_and_calc_totals(void)
                         Dw_total.a, Dw_total.m1, Dw_total.mL);
    }
    else if (!clo_cache_sim && clo_branch_sim) {
-      VG_(sprintf)(buf, "summary:"
+      VG_(fdprintf)(fd, "summary:"
                         " %llu"
                         " %llu %llu %llu %llu\n", 
                         Ir_total.a,
@@ -1569,12 +1556,11 @@ static void fprint_CC_table_and_calc_totals(void)
                         Bi_total.b, Bi_total.mp);
    }
    else {
-      VG_(sprintf)(buf, "summary:"
+      VG_(fdprintf)(fd, "summary:"
                         " %llu\n", 
                         Ir_total.a);
    }
 
-   VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
    VG_(close)(fd);
 }
 
@@ -1592,7 +1578,7 @@ static UInt ULong_width(ULong n)
 static void cg_fini(Int exitcode)
 {
    static HChar buf1[128], buf2[128], buf3[128], buf4[123];
-   static HChar fmt[128];
+   static HChar fmt[128];  // large enough
 
    CacheCC  D_total;
    BranchCC B_total;

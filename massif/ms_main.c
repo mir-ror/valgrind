@@ -2111,14 +2111,8 @@ IRSB* ms_instrument ( VgCallbackClosure* closure,
 //--- Writing snapshots                                    ---//
 //------------------------------------------------------------//
 
-HChar FP_buf[BUF_LEN];
-
-// XXX: implement f{,n}printf in m_libcprint.c eventually, and use it here.
-// Then change Cachegrind to use it too.
 #define FP(format, args...) ({ \
-   VG_(snprintf)(FP_buf, BUF_LEN, format, ##args); \
-   FP_buf[BUF_LEN-1] = '\0';  /* Make sure the string is terminated. */ \
-   VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf)); \
+   VG_(fdprintf)(fd, format, ##args); \
 })
 
 // Nb: uses a static buffer, each call trashes the last string returned.
@@ -2195,25 +2189,14 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
             }
          }
       }
-      // Nb: We treat this specially (ie. we don't use FP) so that if the
-      // ip_desc is too long (eg. due to a long C++ function name), it'll
-      // get truncated, but the '\n' is still there so its a valid file.
-      // (At one point we were truncating without adding the '\n', which
-      // caused bug #155929.)
-      //
-      // Also, we account for the length of the address in ip_desc when
-      // truncating.  (The longest address we could have is 18 chars:  "0x"
-      // plus 16 address digits.)  This ensures that the truncated function
-      // name always has the same length, which makes truncation
-      // deterministic and thus makes testing easier.
-      tl_assert(j <= 18);
-      VG_(snprintf)(FP_buf, BUF_LEN, "%s\n", ip_desc);
-      FP_buf[BUF_LEN-18+j-5] = '.';    // "..." at the end make the
-      FP_buf[BUF_LEN-18+j-4] = '.';    //   truncation more obvious.
-      FP_buf[BUF_LEN-18+j-3] = '.';
-      FP_buf[BUF_LEN-18+j-2] = '\n';   // The last char is '\n'.
-      FP_buf[BUF_LEN-18+j-1] = '\0';   // The string is terminated.
-      VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf));
+
+      // It used to be that ip_desc was truncated at the end.
+      // But there does not seem to be a good reason for that. Besides,
+      // the string was truncated at the right, which is less than ideal.
+      // Truncation at the beginning of the string would be preferable.
+      // Think several nested namespaces in C++....
+      // Anyhow, we spit out the full-length string now.
+      FP("%s\n", ip_desc);
 
       // Indent.
       tl_assert(depth+1 < depth_str_len-1);    // -1 for end NUL char
