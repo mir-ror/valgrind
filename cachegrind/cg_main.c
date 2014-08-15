@@ -212,10 +212,10 @@ static HChar* get_perm_string(HChar* s)
 /*--- CC table operations                                  ---*/
 /*------------------------------------------------------------*/
 
-static void get_debug_info(Addr instr_addr, HChar file[FILE_LEN],
+static void get_debug_info(Addr instr_addr, HChar dir[FILE_LEN],
+                           HChar file[FILE_LEN],
                            HChar **fn, UInt* line)
 {
-   HChar dir[FILE_LEN];
    Bool found_dirname;
    Bool found_file_line = VG_(get_filename_linenum)(
                              instr_addr, 
@@ -233,12 +233,8 @@ static void get_debug_info(Addr instr_addr, HChar file[FILE_LEN],
       *fn = (HChar *)"???";    // FIXME: constification
    }
 
-   if (found_dirname) {
-      // +1 for the '/'.
-      tl_assert(VG_(strlen)(dir) + VG_(strlen)(file) + 1 < FILE_LEN);
-      VG_(strcat)(dir, "/");     // Append '/'
-      VG_(strcat)(dir, file);    // Append file to dir
-      VG_(strcpy)(file, dir);    // Move dir+file to file
+   if (!found_dirname) {
+      dir[0] = '\0';
    }
    
    if (found_file_line) {
@@ -254,14 +250,22 @@ static void get_debug_info(Addr instr_addr, HChar file[FILE_LEN],
 // Returns a pointer to the line CC, creates a new one if necessary.
 static LineCC* get_lineCC(Addr origAddr)
 {
-   HChar   file[FILE_LEN], *fn;
+   HChar   file[FILE_LEN], dir[FILE_LEN], *fn;
    UInt    line;
    CodeLoc loc;
    LineCC* lineCC;
 
-   get_debug_info(origAddr, file, &fn, &line);
+   get_debug_info(origAddr, dir, file, &fn, &line);
 
-   loc.file = file;
+   // Form an absolute pathname if a directory is available
+   HChar absfile[VG_(strlen)(dir) + 1 + VG_(strlen)(file) + 1];
+
+   if (dir[0]) {
+      VG_(sprintf)(absfile, "%s/%s", dir, file);
+   } else {
+      VG_(sprintf)(absfile, "%s", file);
+   }
+   loc.file = absfile;
    loc.fn   = fn;
    loc.line = line;
 
