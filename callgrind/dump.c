@@ -440,8 +440,8 @@ void init_debug_cache(void)
 static /* __inline__ */
 Bool get_debug_pos(BBCC* bbcc, Addr addr, AddrPos* p)
 {
-    HChar file[FILENAME_LEN];
-    HChar dir[FILENAME_LEN];
+    HChar *file;
+    HChar *dir;
     Bool found_file_line, found_dirname;
 
     int cachepos = addr % DEBUG_CACHE_SIZE;
@@ -453,12 +453,12 @@ Bool get_debug_pos(BBCC* bbcc, Addr addr, AddrPos* p)
     }
     else {
 	found_file_line = VG_(get_filename_linenum)(addr,
-						    file, FILENAME_LEN,
-						    dir, FILENAME_LEN,
+						    &file,
+						    &dir,
 						    &found_dirname,
 						    &(p->line));
 	if (!found_file_line) {
-	    VG_(strcpy)(file, "???");
+            file = (HChar *)"???";      // FIXME: constification
 	    p->line = 0;
 	}
 	if (! found_dirname) {

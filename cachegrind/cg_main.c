@@ -30,14 +30,12 @@
 */
 
 #include "pub_tool_basics.h"
-#include "pub_tool_vki.h"
 #include "pub_tool_debuginfo.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcfile.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_libcproc.h"
-#include "pub_tool_machine.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_options.h"
 #include "pub_tool_oset.h"
@@ -58,7 +56,6 @@
 #define DEBUG_CG 0
 
 #define MIN_LINE_SIZE         16
-#define FILE_LEN              VKI_PATH_MAX
 
 /*------------------------------------------------------------*/
 /*--- Options                                              ---*/
@@ -212,21 +209,20 @@ static HChar* get_perm_string(HChar* s)
 /*--- CC table operations                                  ---*/
 /*------------------------------------------------------------*/
 
-static void get_debug_info(Addr instr_addr, HChar dir[FILE_LEN],
-                           HChar file[FILE_LEN],
+static void get_debug_info(Addr instr_addr, HChar **dir,
+                           HChar **file,
                            HChar **fn, UInt* line)
 {
    Bool found_dirname;
    Bool found_file_line = VG_(get_filename_linenum)(
                              instr_addr, 
-                             file, FILE_LEN,
-                             dir,  FILE_LEN, &found_dirname,
+                             file, dir, &found_dirname,
                              line
                           );
    Bool found_fn        = VG_(get_fnname)(instr_addr, fn);
 
    if (!found_file_line) {
-      VG_(strcpy)(file, "???");
+      *file = (HChar *)"???";  // FIXME: constification
       *line = 0;
    }
    if (!found_fn) {
@@ -250,12 +246,12 @@ static void get_debug_info(Addr instr_addr, HChar dir[FILE_LEN],
 // Returns a pointer to the line CC, creates a new one if necessary.
 static LineCC* get_lineCC(Addr origAddr)
 {
-   HChar   file[FILE_LEN], dir[FILE_LEN], *fn;
+   HChar   *file, *dir, *fn;
    UInt    line;
    CodeLoc loc;
    LineCC* lineCC;
 
-   get_debug_info(origAddr, dir, file, &fn, &line);
+   get_debug_info(origAddr, &dir, &file, &fn, &line);
 
    // Form an absolute pathname if a directory is available
    HChar absfile[VG_(strlen)(dir) + 1 + VG_(strlen)(file) + 1];

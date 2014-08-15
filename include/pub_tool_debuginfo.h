@@ -53,17 +53,21 @@ extern Bool VG_(get_fnname_w_offset)
    optionally directory name.  filename and linenum may not be NULL.
    dirname may be NULL, meaning that the caller does not want
    directory name info, in which case dirname_available must also be
-   NULL.  If dirname is non-null, directory info is written to it, if
+   NULL.  If dirname is non-null, directory info is written to *dirname, if
    it is available; if not available, '\0' is written to the first
    byte.  In either case *dirname_available is set to indicate whether
    or not directory information was available.
+
+   filename and dirname are allocated in static strings and will be
+   overwritten in the next invocation. Callers need to copy the strings
+   if they are needed.
 
    Returned value indicates whether any filename/line info could be
    found. */
 extern Bool VG_(get_filename_linenum)
                               ( Addr a, 
-                                /*OUT*/HChar* filename, Int n_filename,
-                                /*OUT*/HChar* dirname,  Int n_dirname,
+                                /*OUT*/HChar** filename,
+                                /*OUT*/HChar** dirname,
                                 /*OUT*/Bool* dirname_available,
                                 /*OUT*/UInt* linenum );
 

@@ -721,8 +721,8 @@ extern struct cachesim_if CLG_(cachesim);
 void CLG_(init_eventsets)(void);
 
 /* from main.c */
-Bool CLG_(get_debug_info)(Addr, HChar dirname[FILENAME_LEN],
-                          HChar filename[FILENAME_LEN],
+Bool CLG_(get_debug_info)(Addr, HChar **dirname,
+                          HChar **filename,
                           HChar **fn_name, UInt*, DebugInfo**);
 void CLG_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*);
 void CLG_(set_instrument_state)(const HChar*,Bool);
