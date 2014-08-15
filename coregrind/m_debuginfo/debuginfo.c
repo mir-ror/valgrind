@@ -109,6 +109,9 @@
 
 static UInt CF_info_generation = 0;
 static void cfsi_m_cache__invalidate ( void );
+static void grow_buffer(HChar **buf, SizeT *size, SizeT need);
+static void grow_buffer_for_string(HChar **buf, SizeT *size,
+                                   const HChar *string);
 
 
 /*------------------------------------------------------------*/
@@ -1663,17 +1666,12 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
    if (show_offset && offset != 0) {
       static HChar *bufwo;      // buf with offset
       static SizeT  bufwo_szB;
-      SizeT  need, len;
+      SizeT  need;
 
-      len = VG_(strlen)(*buf);
-      need = len + 20;
-      if (need > bufwo_szB) {
-        bufwo = ML_(dinfo_realloc)("get_sym_size", bufwo, need);
-        bufwo_szB = need;
-      }
+      need = VG_(strlen)(*buf) + 1 + 19 + 1;
+      grow_buffer(&bufwo, &bufwo_szB, need);
 
-      VG_(strcpy)(bufwo, *buf);
-      VG_(sprintf)(bufwo + len, "%c%ld",
+      VG_(sprintf)(bufwo, "%s%c%ld", *buf,
                    offset < 0 ? '-' : '+',
                    offset < 0 ? -offset : offset);
       *buf = bufwo;
@@ -1848,14 +1846,18 @@ Bool VG_(get_datasym_and_offset)( Addr data_addr,
                        offset );
 }
 
+
 /* Map a code address to the name of a shared object file or the
    executable.  Returns False if no idea; otherwise True.  Doesn't
    require debug info. */
-Bool VG_(get_objname) ( Addr a, HChar** buf )
+Bool VG_(get_objname) ( Addr a, HChar** objname )
 {
    DebugInfo* di;
    const NSegment *seg;
    HChar* filename;
+
+   static SizeT bufsiz = 0;
+   static HChar *buf = NULL;
 
    /* Look in the debugInfo_list to find the name.  In most cases we
       expect this to produce a result. */
@@ -1864,7 +1866,8 @@ Bool VG_(get_objname) ( Addr a, HChar** buf )
           && di->text_size > 0
           && di->text_avma <= a 
           && a < di->text_avma + di->text_size) {
-         *buf = di->fsm.filename;
+         grow_buffer_for_string(&buf, &bufsiz, di->fsm.filename);
+         *objname = VG_(strcpy)(buf, di->fsm.filename);
          return True;
       }
    }
@@ -1875,7 +1878,8 @@ Bool VG_(get_objname) ( Addr a, HChar** buf )
       when running programs under wine. */
    if ( (seg = VG_(am_find_nsegment(a))) != NULL 
         && (filename = VG_(am_get_filename)(seg)) != NULL ) {
-      *buf = filename;
+      grow_buffer_for_string(&buf, &bufsiz, filename);
+      *objname = VG_(strcpy)(buf, filename);
       return True;
    }
    return False;
@@ -1925,16 +1929,9 @@ Bool VG_(get_filename)( Addr a, HChar** filename )
 
    static SizeT bufsiz = 0;
    static HChar *buf = NULL;
-   SizeT need;
 
-   need = VG_(strlen)(fname) + 1;
-   if (need > bufsiz) {
-     if (need < 256) need = 256;
-     bufsiz = need;
-     buf = ML_(dinfo_realloc)("get_filename", buf, bufsiz);
-   }
-   VG_(strcpy)(buf, fname);
-   *filename = buf;
+   grow_buffer_for_string(&buf, &bufsiz, fname);
+   *filename = VG_(strcpy)(buf, fname);
 
    return True;
 }
@@ -4302,6 +4299,27 @@ VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar* name, SizeT n_name,
 
    return res;
 
+}
+
+
+/*------------------------------------------------------------*/
+/*--- Helper functions to grow a buffer                    ---*/
+/*------------------------------------------------------------*/
+
+static void grow_buffer(HChar **buf, SizeT *size, SizeT need)
+{
+   if (need > *size) {
+      if (need < 256) need = 256;
+      *size = need;
+      *buf = ML_(dinfo_realloc)("grow_buffer", *buf, *size);
+   }
+}
+
+// Convenience function 
+static void grow_buffer_for_string(HChar **buf, SizeT *size,
+                                   const HChar *string)
+{
+   grow_buffer(buf, size, VG_(strlen)(string) + 1);
 }
 
 /*--------------------------------------------------------------------*/
