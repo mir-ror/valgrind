@@ -38,6 +38,8 @@
    Assert machinery for use in this file. vg_assert cannot be called
    here due to cyclic dependencies.
    ------------------------------------------------------------------ */
+#if 0  // currently unused
+
 #define libcbase_assert(expr)                             \
   ((void) (LIKELY(expr) ? 0 :                             \
            (ML_(libcbase_assert_fail)(#expr,              \
@@ -56,6 +58,8 @@ static void ML_(libcbase_assert_fail)( const HChar *expr,
    VG_(debugLog)(0, "libcbase", "Exiting now.\n");
    VG_(exit_now)(1);
 }
+
+#endif
 
 /* ---------------------------------------------------------------------
    HChar functions.
@@ -296,22 +300,6 @@ HChar* VG_(strcpy) ( HChar* dest, const HChar* src )
    while (*src) *dest++ = *src++;
    *dest = 0;
    return dest_orig;
-}
-
-/* Copy bytes, not overrunning the end of dest and always ensuring
-   zero termination. */
-void VG_(strncpy_safely) ( HChar* dest, const HChar* src, SizeT ndest )
-{
-   libcbase_assert(ndest > 0);
-
-   SizeT i = 0;
-   while (True) {
-      dest[i] = 0;
-      if (src[i] == 0) return;
-      if (i >= ndest-1) return;
-      dest[i] = src[i];
-      i++;
-   }
 }
 
 HChar* VG_(strncpy) ( HChar* dest, const HChar* src, SizeT ndest )
