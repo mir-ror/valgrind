@@ -721,8 +721,9 @@ extern struct cachesim_if CLG_(cachesim);
 void CLG_(init_eventsets)(void);
 
 /* from main.c */
-Bool CLG_(get_debug_info)(Addr, HChar filename[FILENAME_LEN],
-			 HChar **fn_name, UInt*, DebugInfo**);
+Bool CLG_(get_debug_info)(Addr, HChar dirname[FILENAME_LEN],
+                          HChar filename[FILENAME_LEN],
+                          HChar **fn_name, UInt*, DebugInfo**);
 void CLG_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*);
 void CLG_(set_instrument_state)(const HChar*,Bool);
 void CLG_(dump_profile)(const HChar* trigger,Bool only_current_thread);
@@ -751,7 +752,8 @@ UInt* CLG_(get_fn_entry)(Int n);
 
 void      CLG_(init_obj_table)(void);
 obj_node* CLG_(get_obj_node)(DebugInfo* si);
-file_node* CLG_(get_file_node)(obj_node*, HChar* filename);
+file_node* CLG_(get_file_node)(obj_node*, const HChar *dirname,
+                               const HChar* filename);
 fn_node*  CLG_(get_fn_node)(BB* bb);
 
 /* from bbcc.c */
