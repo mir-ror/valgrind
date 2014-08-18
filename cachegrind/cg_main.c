@@ -230,7 +230,7 @@ static void get_debug_info(Addr instr_addr, HChar **dir,
    }
 
    if (!found_dirname) {
-      dir[0] = '\0';
+     *dir = (HChar *)"";    // FIXME: constification
    }
    
    if (found_file_line) {
