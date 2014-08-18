@@ -462,7 +462,7 @@ Bool get_debug_pos(BBCC* bbcc, Addr addr, AddrPos* p)
 	    p->line = 0;
 	}
 	if (! found_dirname) {
-           dir[0] = '\0';
+           dir = (HChar *)"???";      // FIXME: constification
 	}
 	p->file    = CLG_(get_file_node)(bbcc->bb->obj, dir, file);
 
