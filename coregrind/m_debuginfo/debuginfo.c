@@ -1967,6 +1967,9 @@ Bool VG_(get_filename_linenum) ( Addr a,
    UInt       fndn_ix;
    const HChar *fname, *dname;
 
+   static HChar *fbuf, *dbuf;
+   static SizeT  fbuf_siz, dbuf_siz;
+
    vg_assert( (dirname == NULL && dirname_available == NULL)
               ||
               (dirname != NULL && dirname_available != NULL) );
@@ -1975,7 +1978,8 @@ Bool VG_(get_filename_linenum) ( Addr a,
    if (si == NULL) {
       if (dirname_available) {
          *dirname_available = False;
-         *dirname[0] = 0;
+         grow_buffer_for_string(&dbuf, &dbuf_siz, "");
+         *dirname = VG_(strcpy)(dbuf, "");
       }
       // filename used to be an HChar [] and it was not initialised along
       // this path. Not good.
@@ -1986,9 +1990,6 @@ Bool VG_(get_filename_linenum) ( Addr a,
       *filename = NULL;
       return False;
    }
-
-   static HChar *fbuf, *dbuf;
-   static SizeT  fbuf_siz, dbuf_siz;
 
    fndn_ix = ML_(fndn_ix)(si, locno);
 
