@@ -45,9 +45,6 @@
 //     - "start/stop logging" (eg. quickly skip boring bits)
 // - Add ability to draw multiple graphs, eg. heap-only, stack-only, total.
 //   Give each graph a title.  (try to do it generically!)
-// - allow truncation of long fnnames if the exact line number is
-//   identified?  [hmm, could make getting the name of alloc-fns more
-//   difficult] [could dump full names to file, truncate in ms_print]
 // - make --show-below-main=no work
 // - Options like --alloc-fn='operator new(unsigned, std::nothrow_t const&)'
 //   don't work in a .valgrindrc file or in $VALGRIND_OPTS. 
@@ -809,11 +806,6 @@ static void sanity_check_SXTree(SXPt* sxpt)
 #define MAX_OVERESTIMATE   50
 #define MAX_IPS            (MAX_DEPTH + MAX_OVERESTIMATE)
 
-// This is used for various buffers which can hold function names/IP
-// description.  Some C++ names can get really long so 1024 isn't big
-// enough.
-#define BUF_LEN   2048
-
 // Determine if the given IP belongs to a function that should be ignored.
 static Bool fn_should_be_ignored(Addr ip)
 {
@@ -1199,7 +1191,7 @@ static UInt cull_snapshots(void)
       tl_assert(-1 != min_j);    // Check we found a minimum.
       min_snapshot = & snapshots[ min_j ];
       if (VG_(clo_verbosity) > 1) {
-         HChar buf[64];
+         HChar buf[64];   // large enough
          VG_(snprintf)(buf, 64, " %3d (t-span = %lld)", i, min_timespan);
          VERB_snapshot(2, buf, min_j);
       }
@@ -2134,11 +2126,8 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
    Int   i, j, n_insig_children_sxpts;
    SXPt* child = NULL;
 
-   // Used for printing function names.  Is made static to keep it out
-   // of the stack frame -- this function is recursive.  Obviously this
-   // now means its contents are trashed across the recursive call.
-   static HChar ip_desc_array[BUF_LEN];
-   const HChar* ip_desc = ip_desc_array;
+   // Used for printing function names.
+   const HChar* ip_desc;
 
    switch (sxpt->tag) {
     case SigSXPt:
@@ -2153,7 +2142,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
          } else {
             // XXX: --alloc-fns?
 
-            // Nick thinks this case cannot happen. ip_desc_array would be
+            // Nick thinks this case cannot happen. ip_desc would be
             // conceptually uninitialised here. Therefore:
             tl_assert2(0, "pp_snapshot_SXPt: unexpected");
          }
@@ -2168,7 +2157,12 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
          }
 
          // We need the -1 to get the line number right, But I'm not sure why.
-         ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, ip_desc_array, BUF_LEN, NULL);
+         // Note, that ip_desc points to a static buffer inside
+         // VG_(describe_IP). This could be a problem because this function
+         // calls itself recursively. When that happens the buffer ip_desc
+         // points to will be overwritten. BUT: it is not an issue because
+         // ip_desc will be used ONLY before this function recurses.
+         ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, NULL);
       }
       
       // Do the non-ip_desc part first...
@@ -2193,7 +2187,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
       // It used to be that ip_desc was truncated at the end.
       // But there does not seem to be a good reason for that. Besides,
       // the string was truncated at the right, which is less than ideal.
-      // Truncation at the beginning of the string would be preferable.
+      // Truncation at the beginning of the string would have been preferable.
       // Think several nested namespaces in C++....
       // Anyhow, we spit out the full-length string now.
       FP("%s\n", ip_desc);
@@ -2220,7 +2214,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
          if (InsigSXPt == child->tag)
             n_insig_children_sxpts++;
 
-         // Ok, print the child.  NB: contents of ip_desc_array will be
+         // Ok, print the child.  NB: contents of ip_desc will be
          // trashed by this recursive call.  Doesn't matter currently,
          // but worth noting.
          pp_snapshot_SXPt(fd, child, depth+1, depth_str, depth_str_len,
