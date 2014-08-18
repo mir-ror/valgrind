@@ -449,7 +449,7 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
 			      fn_name);
 
    if (!found_dirname) {
-      dir[0] = '\0';
+      *dir = (HChar *)"";   // FIXME: constification
    }
 
    if (!found_file_line && !found_fn) {
