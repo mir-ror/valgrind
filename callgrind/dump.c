@@ -130,44 +130,17 @@ void init_fpos(FnPos* p)
 }
 
 
-#if 0
+/*  POZOR! VORSICHT! XIAO XIN! KIKEN! OBS!
+    FIXME: my_fwrite used to employ a 32k buffer under the covers which are
+           now gone. If the files are large enough this could cause a
+           performance degradation. Needs to be looked at before the branch
+           is merged to trunk. May have to add  VG_(fopen) etc if needed.
+*/
 static __inline__
-static void my_fwrite(Int fd, const HChar* buf, Int len)
+void my_fwrite(Int fd, const HChar* buf, Int len)
 {
 	VG_(write)(fd, buf, len);
 }
-#else
-
-#define FWRITE_BUFSIZE 32000
-#define FWRITE_THROUGH 10000
-static HChar fwrite_buf[FWRITE_BUFSIZE];
-static Int fwrite_pos;
-static Int fwrite_fd = -1;
-
-static __inline__
-void fwrite_flush(void)
-{
-    if ((fwrite_fd>=0) && (fwrite_pos>0))
-	VG_(write)(fwrite_fd, fwrite_buf, fwrite_pos);
-    fwrite_pos = 0;
-}
-
-static void my_fwrite(Int fd, const HChar* buf, Int len)
-{
-    if (fwrite_fd != fd) {
-	fwrite_flush();
-	fwrite_fd = fd;
-    }
-    if (len > FWRITE_THROUGH) {
-	fwrite_flush();
-	VG_(write)(fd, buf, len);
-	return;
-    }
-    if (FWRITE_BUFSIZE - fwrite_pos <= len) fwrite_flush();
-    VG_(strncpy)(fwrite_buf + fwrite_pos, buf, len);
-    fwrite_pos += len;
-}
-#endif
 
 
 static void print_obj(HChar* buf, obj_node* obj)
@@ -1457,7 +1430,6 @@ static void close_dumpfile(int fd)
     CLG_(add_cost_lz)(CLG_(sets).full, 
 		     &CLG_(total_cost), dump_total_cost);
 
-    fwrite_flush();    
     VG_(close)(fd);
 
     if (filename[0] == '.') {
