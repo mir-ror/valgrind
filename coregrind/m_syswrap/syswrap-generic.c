@@ -1085,6 +1085,11 @@ void pre_mem_read_sockaddr ( ThreadId tid,
          break;
 #     endif
 
+#     ifdef VKI_AF_UNSPEC
+      case VKI_AF_UNSPEC:
+         break;
+#     endif
+
       default:
          /* No specific information about this address family.
             Let's just check the full data following the family.
@@ -3434,7 +3439,7 @@ void ML_(PRE_unknown_ioctl)(ThreadId tid, UWord request, UWord arg)
    
    UInt dir  = _VKI_IOC_DIR(request);
    UInt size = _VKI_IOC_SIZE(request);
-   if (VG_(strstr)(VG_(clo_sim_hints), "lax-ioctls") != NULL) {
+   if (SimHintiS(SimHint_lax_ioctls, VG_(clo_sim_hints))) {
       /* 
        * Be very lax about ioctl handling; the only
        * assumption is that the size is correct. Doesn't
@@ -3844,7 +3849,7 @@ PRE(sys_write)
       --sim-hints=enable-outer (used for self hosting). */
    ok = ML_(fd_allowed)(ARG1, "write", tid, False);
    if (!ok && ARG1 == 2/*stderr*/ 
-           && VG_(strstr)(VG_(clo_sim_hints),"enable-outer"))
+           && SimHintiS(SimHint_enable_outer, VG_(clo_sim_hints)))
       ok = True;
    if (!ok)
       SET_STATUS_Failure( VKI_EBADF );

@@ -61,14 +61,15 @@
 #include "pub_core_basics.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_vki.h"
-#include "pub_core_vkiscnums.h"    // __NR_sched_yield
-#include "pub_core_libcsetjmp.h"   // to keep _threadstate.h happy
+#include "pub_core_vkiscnums.h"  // __NR_sched_yield
+#include "pub_core_libcsetjmp.h" // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
+#include "pub_core_clientstate.h"
 #include "pub_core_aspacemgr.h"
-#include "pub_core_clreq.h"         // for VG_USERREQ__*
+#include "pub_core_clreq.h"      // for VG_USERREQ__*
 #include "pub_core_dispatch.h"
-#include "pub_core_errormgr.h"      // For VG_(get_n_errs_found)()
-#include "pub_core_gdbserver.h"     // for VG_(gdbserver) and VG_(gdbserver_activity)
+#include "pub_core_errormgr.h"   // For VG_(get_n_errs_found)()
+#include "pub_core_gdbserver.h"  // for VG_(gdbserver)/VG_(gdbserver_activity)
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
@@ -1207,6 +1208,30 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          VG_(gdbserver_prerun_action) (1);
       } else {
          VG_(disable_vgdb_poll) ();
+      }
+   }
+
+   if (SimHintiS(SimHint_no_nptl_pthread_stackcache, VG_(clo_sim_hints))
+       && tid != 1) {
+      /* We disable the stack cache the first time we see a thread other
+         than the main thread appearing. At this moment, we are sure the pthread
+         lib loading is done/variable was initialised by pthread lib/... */
+      if (VG_(client__stack_cache_actsize__addr)) {
+         if (*VG_(client__stack_cache_actsize__addr) == 0) {
+            VG_(debugLog)(1,"sched",
+                          "pthread stack cache size disable done"
+                          " via kludge\n");
+            *VG_(client__stack_cache_actsize__addr) = 1000 * 1000 * 1000;
+            /* Set a value big enough to be above the hardcoded maximum stack
+               cache size in glibc, small enough to allow a pthread stack size
+               to be added without risk of overflow. */
+         }
+      } else {
+          VG_(debugLog)(0,"sched",
+                        "WARNING: pthread stack cache cannot be disabled!\n");
+          VG_(clo_sim_hints) &= !SimHint2S(SimHint_no_nptl_pthread_stackcache);
+          /* Remove SimHint_no_nptl_pthread_stackcache from VG_(clo_sim_hints)
+             to avoid having a msg for all following threads. */
       }
    }
 

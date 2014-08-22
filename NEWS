@@ -32,8 +32,8 @@ Release 3.10.0 (?? ?????? 201?)
     and creates a 'H-B relationship' between a terminated task and
     its master. This avoids some false positive and avoids big
     memory usage when a lot of Ada tasks are created and terminated.
-    The interceptions are only activated with gnatpro >= 7.3.0w-20140611
-    or gcc >= ????? (TBD: check when changes pushed to FSF gcc).
+    The interceptions are only activated with forthcoming releasses of
+    gnatpro >= 7.3.0w-20140611 and gcc >= 5.0.
   - Helgrind GDB server monitor command 'info locks' giving
     the list of locks, their location, and their status.
 
@@ -96,6 +96,9 @@ Release 3.10.0 (?? ?????? 201?)
   If an object contains both CFI and EXIDX unwind information, Valgrind
   will prefer the CFI over the EXIDX.
 
+* Typos or unknown values in --sim-hints and --kernel-variant command
+  line options are now detected and reported to the user as a usage error.
+
 * ==================== FIXED BUGS ====================
 
 The following bugs have been fixed or resolved.  Note that "n-i-bz"
@@ -149,6 +152,7 @@ where XXXXXX is the bug number as listed below.
 329956  valgrind crashes when lmw/stmw instructions are used on ppc64
 330228  mmap must align to VKI_SHMLBA on mips32
 330257  LLVM does not support `-mno-dynamic-no-pic` option
+330319  amd64->IR: unhandled instruction bytes: 0xF 0x1 0xD5 (xend)
 330459  --track-fds=yes doesn't track eventfds
 330469  Add clock_adjtime syscall support
 330622  Add test to regression suite for POWER instruction: dcbzl
@@ -207,6 +211,8 @@ where XXXXXX is the bug number as listed below.
 338024  inlined functions are not shown if DW_AT_ranges is used
 338115  DRD: computed conflict set differs from actual after fork
 338160  implement display of thread local storage in gdbsrv
+338205  configure.ac and check for -Wno-tautological-compare
+338445  amd64 vbit-test fails with unknown opcodes used by arm64 VEX
 n-i-bz  Fix KVM_CREATE_IRQCHIP ioctl handling
 n-i-bz  s390x: Fix memory corruption for multithreaded applications
 n-i-bz  vex arm->IR: allow PC as basereg in some LDRD cases

@@ -1,3 +1,49 @@
+/*
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
+
+   Copyright (C) 2014-2014 Philippe Waroquiers
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
+
+/* This file is used to generate target executable(s) getoff-<platform>
+   In a bi-arch setup, this is used to build 2 executables
+   (for the primary and secondary platforms).
+
+   This program uses user space libraries to retrieve some platform
+   dependent offsets needed for Valgrind core, but that cannot (easily)
+   be retrieved by Valgrind core.
+
+   This is currently used only for handling the gdbsrv QGetTlsAddr query :
+   it only computes and outputs lm_modid_offset in struct link_map
+   of the dynamic linker. In theory, we should also compute the offset needed
+   to get the dtv from the thread register/pointer/...
+   Currently, the various valgrind-low-xxxxxx.c files are hardcoding this
+   offset as it is deemed (?) stable, and there is no clear way how to
+   compute this dtv offset.
+
+   The getoff-<platform> executable will be launched automatically by
+   Valgrind gdbserver when the first QGetTlsAddr query is retrieved. 
+
+   On plaforms that do not support __thread and/or that do not provide
+   dlinfo RTLD_DI_TLS_MODID, this executable produces no output. */
+   
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -9,8 +55,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef HAVE_DLINFO_RTLD_DI_TLS_MODID
 #include <link.h>
 #include <dlfcn.h>
+#endif
 
 /* true if arg matches the provided option */
 static
@@ -37,13 +85,7 @@ void usage (char* progname)
 progname);
 
 }
-/* Currently, only computes and output lm_modid_offset in struct link_map
-   of the dynamic linker. In theory, we should also compute the offset needed
-   to get the dtv from the thread register/pointer/...
-   Currently, the various valgrind-low-xxxxxx.c files are hardcoding this
-   offset as it is deemed (?) stable, and there is no clear way how to
-   compute this dtv offset.
-*/
+
 int main (int argc, char** argv)
 {
    int i;

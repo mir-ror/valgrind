@@ -174,11 +174,13 @@ static void usage_NORETURN ( Bool debug_help )
 "    --vgdb-shadow-registers=no|yes   let gdb see the shadow registers [no]\n"
 "    --vgdb-prefix=<prefix>    prefix for vgdb FIFOs [%s]\n"
 "    --run-libc-freeres=no|yes free up glibc memory at exit on Linux? [yes]\n"
-"    --sim-hints=hint1,hint2,...  known hints:\n"
-"                                 lax-ioctls, enable-outer, fuse-compatible [none]\n"
+"    --sim-hints=hint1,hint2,...  activate unusual sim behaviours [none] \n"
+"         where hint is one of lax-ioctls fuse-compatible enable-outer\n"
+"           no-inner-prefix no-nptl-pthread-stackcache none\n"
 "    --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]\n"
-"    --kernel-variant=variant1,variant2,...  known variants: bproc [none]\n"
-"                              handle non-standard kernel variants\n"
+"    --kernel-variant=variant1,variant2,...  handle non-standard kernel"
+                                                               " variants [none]\n"
+"         where variant is one of bproc none\n"
 "    --merge-recursive-frames=<number>  merge frames between identical\n"
 "           program counters in max <number> frames) [0]\n"
 "    --num-transtab-sectors=<number> size of translated code cache [%d]\n"
@@ -376,7 +378,11 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
       // Set up VG_(clo_sim_hints). This is needed a.o. for an inner
       // running in an outer, to have "no-inner-prefix" enabled
       // as early as possible.
-      else if VG_STR_CLO (str, "--sim-hints",     VG_(clo_sim_hints)) {}
+      else if VG_USETX_CLO (str, "--sim-hints",
+                            "no-inner-prefix,fuse-compatible,"
+                            "lax-ioctls,enable-outer,"
+                            "no-nptl-pthread-stackcache",
+                            VG_(clo_sim_hints)) {}
    }
 }
 
@@ -545,11 +551,9 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       }
       else if VG_INT_CLO (arg, "--vgdb-poll",      VG_(clo_vgdb_poll)) {}
       else if VG_INT_CLO (arg, "--vgdb-error",     VG_(clo_vgdb_error)) {}
-      else if VG_STR_CLO (arg, "--vgdb-stop-at", tmp_str) {
-         if (!VG_(parse_enum_set)("startup,exit,valgrindabexit", tmp_str,
-                                  &VG_(clo_vgdb_stop_at)))
-            VG_(fmsg_bad_option)(arg, "");
-      }
+      else if VG_USET_CLO (arg, "--vgdb-stop-at",
+                           "startup,exit,valgrindabexit",
+                           VG_(clo_vgdb_stop_at)) {}
       else if VG_STR_CLO (arg, "--vgdb-prefix",    VG_(clo_vgdb_prefix)) {
          VG_(arg_vgdb_prefix) = arg;
       }
@@ -622,7 +626,8 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                                                     VG_(clo_smc_check),
                                                     Vg_SmcAllNonFile);
 
-      else if VG_STR_CLO (arg, "--kernel-variant",  VG_(clo_kernel_variant)) {}
+      else if VG_USETX_CLO (arg, "--kernel-variant", "bproc",
+                            VG_(clo_kernel_variant)) {}
 
       else if VG_BOOL_CLO(arg, "--dsymutil",        VG_(clo_dsymutil)) {}
 
@@ -1270,8 +1275,7 @@ static void print_preamble ( Bool logging_to_fd,
       // paste the command line (because of the "==pid==" prefixes), so we now
       // favour utility and simplicity over aesthetics.
       umsg_or_xml("%sCommand: ", xpre);
-      if (VG_(args_the_exename))
-         umsg_or_xml_arg(VG_(args_the_exename));
+      umsg_or_xml_arg(VG_(args_the_exename));
           
       for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
          HChar* s = *(HChar**)VG_(indexXA)( VG_(args_for_client), i );
@@ -1322,8 +1326,7 @@ static void print_preamble ( Bool logging_to_fd,
       VG_(printf_xml)("  </vargv>\n");
 
       VG_(printf_xml)("  <argv>\n");
-      if (VG_(args_the_exename))
-         VG_(printf_xml)("    <exe>%pS</exe>\n",
+      VG_(printf_xml)("    <exe>%pS</exe>\n",
                                 VG_(args_the_exename));
       for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
          VG_(printf_xml)(
@@ -1869,8 +1872,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
          VG_(err_config_error)("Can't create client cmdline file in %s\n", buf2);
 
       nul[0] = 0;
-      exename = VG_(args_the_exename) ? VG_(args_the_exename)
-                                      : "unknown_exename";
+      exename = VG_(args_the_exename);
       VG_(write)(fd, exename, VG_(strlen)( exename ));
       VG_(write)(fd, nul, 1);
 

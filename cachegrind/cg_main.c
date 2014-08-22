@@ -1416,10 +1416,7 @@ static void fprint_CC_table_and_calc_totals(void)
                      I1.desc_line, D1.desc_line, LL.desc_line);
 
    // "cmd:" line
-   VG_(fdprintf)(fd, "cmd:");
-   if (VG_(args_the_exename)) {
-      VG_(fdprintf)(fd, " %s", VG_(args_the_exename));
-   }
+   VG_(fdprintf)(fd, "cmd: %s", VG_(args_the_exename));
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       HChar* arg = * (HChar**) VG_(indexXA)( VG_(args_for_client), i );
       if (arg) {
