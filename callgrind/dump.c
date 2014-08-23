@@ -143,29 +143,29 @@ void my_fwrite(Int fd, const HChar* buf, Int len)
 }
 
 
-static void print_obj(HChar* buf, obj_node* obj)
+static void print_obj(Int fd, const HChar* prefix, obj_node* obj)
 {
     //int n;
 
     if (CLG_(clo).compress_strings) {
 	CLG_ASSERT(obj_dumped != 0);
 	if (obj_dumped[obj->number])
-	    /*n =*/ VG_(sprintf)(buf, "(%d)\n", obj->number);
+            /*n =*/ VG_(fdprintf)(fd, "%s(%d)\n", prefix, obj->number);
 	else {
-	    /*n =*/ VG_(sprintf)(buf, "(%d) %s\n",
-			     obj->number, obj->name);
+            /*n =*/ VG_(fdprintf)(fd, "%s(%d) %s\n", prefix,
+                                  obj->number, obj->name);
 	}
     }
     else
-	/*n =*/ VG_(sprintf)(buf, "%s\n", obj->name);
+        /*n =*/ VG_(fdprintf)(fd, "%s%s\n", prefix, obj->name);
 
 #if 0
     /* add mapping parameters the first time a object is dumped
      * format: mp=0xSTART SIZE 0xOFFSET */
     if (!obj_dumped[obj->number]) {
 	obj_dumped[obj->number];
-	VG_(sprintf)(buf+n, "mp=%p %p %p\n",
-		     pos->obj->start, pos->obj->size, pos->obj->offset);
+	VG_(fdprintf)(fd, "mp=%p %p %p\n",
+                      pos->obj->start, pos->obj->size, pos->obj->offset);
     }
 #else
     obj_dumped[obj->number] = True;
@@ -339,9 +339,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
     }
 
     if (last->obj != bbcc->cxt->fn[0]->file->obj) {
-	VG_(sprintf)(outbuf, "ob=");
-	print_obj(outbuf+3, bbcc->cxt->fn[0]->file->obj);
-	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+	print_obj(fd, "ob=", bbcc->cxt->fn[0]->file->obj);
 	last->obj = bbcc->cxt->fn[0]->file->obj;
 	res = True;
     }
@@ -684,9 +682,7 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
     
     /* object of called position different to object of this function?*/
     if (jcc->from->cxt->fn[0]->file->obj != obj) {
-	VG_(sprintf)(outbuf, "cob=");
-	print_obj(outbuf+4, obj);
-	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+	print_obj(fd, "cob=", obj);
     }
 
     /* file of called position different to current file? */
