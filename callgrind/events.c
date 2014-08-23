@@ -517,23 +517,35 @@ void CLG_(append_event)(EventMapping* em, const HChar* n)
 }
 
 
-/* Returns number of characters written */
-Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping* em)
+/* Returns pointer to dynamically string. The string will be overwritten
+   with each invocation. */
+const HChar *CLG_(eventmapping_as_string)(EventMapping* em)
 {
     Int i, pos = 0;
     EventGroup* eg;
 
     CLG_ASSERT(em != 0);
 
+    static HChar *buf = NULL;
+    static SizeT  bufsiz = 0;
+
+    if (buf == NULL)
+      grow_buffer(&buf, &bufsiz, 100);  // initial size
+    buf[0] = '\0';
+
     for(i=0; i< em->size; i++) {
-	if (pos>0) buf[pos++] = ' ';
+	if (pos>0) {
+           grow_buffer(&buf, &bufsiz, pos + 1);
+           buf[pos++] = ' ';
+        }
 	eg = eventGroup[em->entry[i].group];
 	CLG_ASSERT(eg != 0);
+        grow_buffer(&buf, &bufsiz,
+                    pos + VG_(strlen)(eg->name[em->entry[i].index]) + 1);
 	pos += VG_(sprintf)(buf + pos, "%s", eg->name[em->entry[i].index]);
     }
-    buf[pos] = 0;
 
-    return pos;
+    return buf;
 }
 
 /* Returns pointer to dynamically string. The string will be overwritten

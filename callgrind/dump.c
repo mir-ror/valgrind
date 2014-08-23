@@ -1376,10 +1376,9 @@ static int new_dumpfile(HChar buf[BUF_LEN], int tid, const HChar* trigger)
    my_fwrite(fd, buf, VG_(strlen)(buf));
 
    /* "events:" line */
-   i = VG_(sprintf)(buf, "events: ");
-   CLG_(sprint_eventmapping)(buf+i, CLG_(dumpmap));
+   VG_(sprintf)(buf, "events: %s\n",
+                CLG_(eventmapping_as_string)(CLG_(dumpmap)));
    my_fwrite(fd, buf, VG_(strlen)(buf));
-   my_fwrite(fd, "\n", 1);
 
    /* summary lines */
    sum = CLG_(get_eventset_cost)( CLG_(sets).full );

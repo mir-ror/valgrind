@@ -1539,9 +1539,8 @@ static void dump_state_togdb(void)
     VG_(gdb_printf)("distinct-contexts: %d\n", CLG_(stat).distinct_contexts);
 
     /* "events:" line. Given here because it will be dynamic in the future */
-    p = VG_(sprintf)(buf, "events: ");
-    CLG_(sprint_eventmapping)(buf+p, CLG_(dumpmap));
-    VG_(gdb_printf)("%s\n", buf);
+    VG_(gdb_printf)("events: %s\n",
+                    CLG_(eventmapping_as_string)(CLG_(dumpmap)));
     /* "part:" line (number of last part. Is 0 at start */
     VG_(gdb_printf)("part: %d\n", CLG_(get_dump_counter)());
 		
@@ -1884,8 +1883,7 @@ void clg_print_stats(void)
 static
 void finish(void)
 {
-  HChar buf[32+COSTS_LEN];
-  HChar fmt[128];
+  HChar fmt[128];    // large enough
   Int l1, l2, l3;
   FullCost total;
 
@@ -1907,8 +1905,8 @@ void finish(void)
     VG_(message)(Vg_DebugMsg, "\n");
   }
 
-  CLG_(sprint_eventmapping)(buf, CLG_(dumpmap));
-  VG_(message)(Vg_UserMsg, "Events    : %s\n", buf);
+  VG_(message)(Vg_UserMsg, "Events    : %s\n",
+               CLG_(eventmapping_as_string)(CLG_(dumpmap)));
   VG_(message)(Vg_UserMsg, "Collected : %s\n",
                CLG_(mappingcost_as_string)(CLG_(dumpmap), CLG_(total_cost)));
   VG_(message)(Vg_UserMsg, "\n");
