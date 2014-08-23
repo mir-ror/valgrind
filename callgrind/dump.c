@@ -196,30 +196,26 @@ static void print_file(Int fd, const char *prefix, file_node* file)
 /*
  * tag can be "fn", "cfn", "jfn"
  */
-static void print_fn(Int fd, HChar* buf, const HChar* tag, fn_node* fn)
+static void print_fn(Int fd, const HChar* tag, fn_node* fn)
 {
-    int p;
-    p = VG_(sprintf)(buf, "%s=",tag);
+    VG_(fdprintf)(fd, "%s=",tag);
     if (CLG_(clo).compress_strings) {
 	CLG_ASSERT(fn_dumped != 0);
 	if (fn_dumped[fn->number])
-	    p += VG_(sprintf)(buf+p, "(%d)\n", fn->number);
+	    VG_(fdprintf)(fd, "(%d)\n", fn->number);
 	else {
-	    p += VG_(sprintf)(buf+p, "(%d) %s\n",
-			      fn->number, fn->name);
+	    VG_(fdprintf)(fd, "(%d) %s\n", fn->number, fn->name);
 	    fn_dumped[fn->number] = True;
 	}
     }
     else
-	p += VG_(sprintf)(buf+p, "%s\n", fn->name);
-
-    my_fwrite(fd, buf, p);
+	VG_(fdprintf)(fd, "%s\n", fn->name);
 }
 
-static void print_mangled_fn(Int fd, HChar* buf, const HChar* tag, 
+static void print_mangled_fn(Int fd, const HChar* tag, 
 			     Context* cxt, int rec_index)
 {
-    int p, i;
+    Int i;
 
     if (CLG_(clo).compress_strings && CLG_(clo).compress_mangled) {
 
@@ -228,9 +224,7 @@ static void print_mangled_fn(Int fd, HChar* buf, const HChar* tag,
 
 	CLG_ASSERT(cxt_dumped != 0);
 	if (cxt_dumped[cxt->base_number+rec_index]) {
-	    p = VG_(sprintf)(buf, "%s=(%d)\n",
-			     tag, cxt->base_number + rec_index);
-	    my_fwrite(fd, buf, p);
+            VG_(fdprintf)(fd, "%s=(%d)\n", tag, cxt->base_number + rec_index);
 	    return;
 	}
 
@@ -240,9 +234,7 @@ static void print_mangled_fn(Int fd, HChar* buf, const HChar* tag,
 	    CLG_ASSERT(cxt->fn[i-1]->pure_cxt != 0);
 	    n = cxt->fn[i-1]->pure_cxt->base_number;
 	    if (cxt_dumped[n]) continue;
-	    p = VG_(sprintf)(buf, "%s=(%d) %s\n",
-			     tag, n, cxt->fn[i-1]->name);
-	    my_fwrite(fd, buf, p);
+	    VG_(fdprintf)(fd, "%s=(%d) %s\n", tag, n, cxt->fn[i-1]->name);
 
 	    cxt_dumped[n] = True;
 	    last = cxt->fn[i-1]->pure_cxt;
@@ -250,44 +242,40 @@ static void print_mangled_fn(Int fd, HChar* buf, const HChar* tag,
 	/* If the last context was the context to print, we are finished */
 	if ((last == cxt) && (rec_index == 0)) return;
 
-	p = VG_(sprintf)(buf, "%s=(%d) (%d)", tag,
+	VG_(fdprintf)(fd, "%s=(%d) (%d)", tag,
 			 cxt->base_number + rec_index,
 			 cxt->fn[0]->pure_cxt->base_number);
 	if (rec_index >0)
-	    p += VG_(sprintf)(buf+p, "'%d", rec_index +1);
+	    VG_(fdprintf)(fd, "'%d", rec_index +1);
 	for(i=1;i<cxt->size;i++)
-	    p += VG_(sprintf)(buf+p, "'(%d)", 
-			      cxt->fn[i]->pure_cxt->base_number);
-	p += VG_(sprintf)(buf+p, "\n");
-	my_fwrite(fd, buf, p);
+	    VG_(fdprintf)(fd, "'(%d)", cxt->fn[i]->pure_cxt->base_number);
+	VG_(fdprintf)(fd, "\n");
 
 	cxt_dumped[cxt->base_number+rec_index] = True;
 	return;
     }
 
 
-    p = VG_(sprintf)(buf, "%s=", tag);
+    VG_(fdprintf)(fd, "%s=", tag);
     if (CLG_(clo).compress_strings) {
 	CLG_ASSERT(cxt_dumped != 0);
 	if (cxt_dumped[cxt->base_number+rec_index]) {
-	    p += VG_(sprintf)(buf+p, "(%d)\n", cxt->base_number + rec_index);
-	    my_fwrite(fd, buf, p);
+	    VG_(fdprintf)(fd, "(%d)\n", cxt->base_number + rec_index);
 	    return;
 	}
 	else {
-	    p += VG_(sprintf)(buf+p, "(%d) ", cxt->base_number + rec_index);
+	    VG_(fdprintf)(fd, "(%d) ", cxt->base_number + rec_index);
 	    cxt_dumped[cxt->base_number+rec_index] = True;
 	}
     }
 
-    p += VG_(sprintf)(buf+p, "%s", cxt->fn[0]->name);
+    VG_(fdprintf)(fd, "%s", cxt->fn[0]->name);
     if (rec_index >0)
-	p += VG_(sprintf)(buf+p, "'%d", rec_index +1);
+	VG_(fdprintf)(fd, "'%d", rec_index +1);
     for(i=1;i<cxt->size;i++)
-	p += VG_(sprintf)(buf+p, "'%s", cxt->fn[i]->name);
+	VG_(fdprintf)(fd, "'%s", cxt->fn[i]->name);
 
-    p += VG_(sprintf)(buf+p, "\n");
-    my_fwrite(fd, buf, p);
+    VG_(fdprintf)(fd, "\n");
 }
 
 
@@ -310,8 +298,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 
     if (!CLG_(clo).mangle_names) {
 	if (last->rec_index != bbcc->rec_index) {
-	    VG_(sprintf)(outbuf, "rec=%d\n\n", bbcc->rec_index);
-	    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+	    VG_(fdprintf)(fd, "rec=%d\n\n", bbcc->rec_index);
 	    last->rec_index = bbcc->rec_index;
 	    last->cxt = 0; /* reprint context */
 	    res = True;
@@ -325,13 +312,12 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 	    if (curr_from == 0) {
 		if (last_from != 0) {
 		    /* switch back to no context */
-		    VG_(sprintf)(outbuf, "frfn=(spontaneous)\n");
-		    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+		    VG_(fdprintf)(fd, "frfn=(spontaneous)\n");
 		    res = True;
 		}
 	    }
 	    else if (last_from != curr_from) {
-		print_fn(fd,outbuf,"frfn", curr_from);
+		print_fn(fd, "frfn", curr_from);
 		res = True;
 	    }
 	    last->cxt = bbcc->cxt;
@@ -352,7 +338,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 
     if (!CLG_(clo).mangle_names) {
 	if (last->fn != bbcc->cxt->fn[0]) {
-	    print_fn(fd,outbuf, "fn", bbcc->cxt->fn[0]);
+	    print_fn(fd, "fn", bbcc->cxt->fn[0]);
 	    last->fn = bbcc->cxt->fn[0];
 	    res = True;
 	}
@@ -362,7 +348,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 	if ((last->rec_index != bbcc->rec_index) ||
 	    (last->cxt != bbcc->cxt)) {
 
-	    print_mangled_fn(fd, outbuf, "fn", bbcc->cxt, bbcc->rec_index);
+	    print_mangled_fn(fd, "fn", bbcc->cxt, bbcc->rec_index);
 	    last->fn = bbcc->cxt->fn[0];
 	    last->rec_index = bbcc->rec_index;
 	    res = True;
@@ -650,10 +636,10 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 	
 	if (jcc->from->cxt != jcc->to->cxt) {
 	    if (CLG_(clo).mangle_names)
-		print_mangled_fn(fd, outbuf, "jfn",
+		print_mangled_fn(fd, "jfn",
 				 jcc->to->cxt, jcc->to->rec_index);
 	    else
-		print_fn(fd, outbuf, "jfn", jcc->to->cxt->fn[0]);
+		print_fn(fd, "jfn", jcc->to->cxt->fn[0]);
 	}
 	    
 	if (jcc->jmpkind == jk_CondJump) {
@@ -691,9 +677,9 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
     }
 
     if (CLG_(clo).mangle_names)
-	print_mangled_fn(fd, outbuf, "cfn", jcc->to->cxt, jcc->to->rec_index);
+	print_mangled_fn(fd, "cfn", jcc->to->cxt, jcc->to->rec_index);
     else
-	print_fn(fd, outbuf, "cfn", jcc->to->cxt->fn[0]);
+	print_fn(fd, "cfn", jcc->to->cxt->fn[0]);
 
     if (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost)) {
       VG_(sprintf)(outbuf, "calls=%llu ", 
