@@ -445,6 +445,12 @@ void* CLG_(malloc)(const HChar* cc, UWord s, const HChar* f)
     return VG_(malloc)(cc,s);
 }
 
+void* CLG_(realloc)(const HChar* cc, void *p, UWord s, const HChar* f)
+{
+    CLG_DEBUG(3, "Realloc(%lu) in %s.\n", s, f);
+    return VG_(realloc)(cc,p,s);
+}
+
 #else /* CLG_ENABLE_DEBUG */
 
 void CLG_(print_bbno)(void) {}

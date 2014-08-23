@@ -129,7 +129,9 @@ EventMapping* CLG_(get_eventmapping)(EventSet*);
 void CLG_(append_event)(EventMapping*, const HChar*);
 /* Returns number of characters written */
 Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping*);
-/* Returns number of characters written */
-Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping*, ULong*);
+/* Returns mapping cost as a character string. That string is dnamically
+   allocated in a static buffer and will be overwritten with every allocation.
+   The function never returns NULL. */
+const HChar *CLG_(mappingcost_as_string)(EventMapping*, ULong*);
 
 #endif /* CLG_EVENTS */

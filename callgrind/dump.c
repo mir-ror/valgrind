@@ -574,8 +574,8 @@ void fprint_pos(Int fd, AddrPos* curr, AddrPos* last)
 static
 void fprint_cost(int fd, EventMapping* es, ULong* cost)
 {
-  int p = CLG_(sprint_mappingcost)(outbuf, es, cost);
-  VG_(sprintf)(outbuf+p, "\n");
+  const HChar *mcost = CLG_(mappingcost_as_string)(es, cost);
+  VG_(sprintf)(outbuf, "%s\n", mcost);
   my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
   return;
 }
@@ -1197,11 +1197,8 @@ BBCC** prepare_dump(void)
 static void fprint_cost_ln(int fd, const HChar* prefix,
 			   EventMapping* em, ULong* cost)
 {
-    int p;
-
-    p = VG_(sprintf)(outbuf, "%s", prefix);
-    p += CLG_(sprint_mappingcost)(outbuf + p, em, cost);
-    VG_(sprintf)(outbuf + p, "\n");
+    VG_(sprintf)(outbuf, "%s%s\n", prefix,
+                 CLG_(mappingcost_as_string)(em, cost));
     my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 }
 

@@ -536,14 +536,22 @@ Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping* em)
     return pos;
 }
 
-/* Returns number of characters written */
-Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping* em, ULong* c)
+/* Returns pointer to dynamically string. The string will be overwritten
+   with each invocation. */
+const HChar *CLG_(mappingcost_as_string)(EventMapping* em, ULong* c)
 {
     Int i, pos, skipped = 0;
+    static HChar *buf = NULL;
+    static SizeT  bufsiz = 0;
 
-    if (!c || em->size==0) return 0;
+    if (buf == NULL)
+      grow_buffer(&buf, &bufsiz, 100);  // initial size
+    buf[0] = '\0';
+
+    if (!c || em->size==0) return buf;
 
     /* At least one entry */
+    tl_assert(bufsiz > 21);   // 20 chars for a 64-bit wide ULONG 
     pos = VG_(sprintf)(buf, "%llu", c[em->entry[0].offset]);
 
     for(i=1; i<em->size; i++) {
@@ -552,13 +560,14 @@ Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping* em, ULong* c)
 	    continue;
 	}
 	while(skipped>0) {
+            grow_buffer(&buf, &bufsiz, pos + 2);
 	    buf[pos++] = ' ';
 	    buf[pos++] = '0';
 	    skipped--;
 	}
-	buf[pos++] = ' ';
-	pos += VG_(sprintf)(buf+pos, "%llu", c[em->entry[i].offset]);
+        grow_buffer(&buf, &bufsiz, pos + 1 + 20 + 1);
+	pos += VG_(sprintf)(buf+pos, " %llu", c[em->entry[i].offset]);
     }
 
-    return pos;
+    return buf;
 }

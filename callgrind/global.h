@@ -895,13 +895,25 @@ void CLG_(print_addr)(Addr addr);
 void CLG_(print_addr_ln)(Addr addr);
 
 void* CLG_(malloc)(const HChar* cc, UWord s, const HChar* f);
+void* CLG_(realloc)(const HChar* cc, void *p, UWord s, const HChar* f);
 void* CLG_(free)(void* p, const HChar* f);
 #if 0
 #define CLG_MALLOC(_cc,x) CLG_(malloc)((_cc),x,__FUNCTION__)
+#define CLG_REALLOC(_cc,p,x) CLG_(realloc)((_cc),p,x,__FUNCTION__)
 #define CLG_FREE(p)       CLG_(free)(p,__FUNCTION__)
 #else
 #define CLG_MALLOC(_cc,x) VG_(malloc)((_cc),x)
+#define CLG_REALLOC(_cc,p,x) VG_(realloc)((_cc),p,x)
 #define CLG_FREE(p)       VG_(free)(p)
 #endif
+
+static __inline__ void grow_buffer(HChar **buf, SizeT *size, SizeT need)
+{
+   if (need > *size) {
+      if (need < 256) need = 256;
+      *size = need;
+      *buf = CLG_REALLOC("cl.grow_buffer", *buf, *size);
+   }
+}
 
 #endif /* CLG_GLOBAL */
