@@ -1434,12 +1434,11 @@ void cachesim_clear(void)
 }
 
 
-static void cachesim_getdesc(HChar* buf)
+static void cachesim_getdesc(Int fd)
 {
-  Int p;
-  p = VG_(sprintf)(buf, "\ndesc: I1 cache: %s\n", I1.desc_line);
-  p += VG_(sprintf)(buf+p, "desc: D1 cache: %s\n", D1.desc_line);
-  VG_(sprintf)(buf+p, "desc: LL cache: %s\n", LL.desc_line);
+  VG_(fdprintf)(fd, "\ndesc: I1 cache: %s\n", I1.desc_line);
+  VG_(fdprintf)(fd, "desc: D1 cache: %s\n", D1.desc_line);
+  VG_(fdprintf)(fd, "desc: LL cache: %s\n", LL.desc_line);
 }
 
 static
