@@ -50,12 +50,6 @@ static FullCost dump_total_cost = 0;
 
 EventMapping* CLG_(dumpmap) = 0;
 
-/* Temporary output buffer for
- *  print_fn_pos, fprint_apos, fprint_fcost, fprint_jcc,
- *  fprint_fcc_ln, dump_run_info, dump_state_info
- */
-static HChar outbuf[FILENAME_LEN + FN_NAME_LEN + OBJ_NAME_LEN + COSTS_LEN];
-
 Int CLG_(get_dump_counter)(void)
 {
   return out_counter;
@@ -480,8 +474,7 @@ static void fprint_apos(Int fd, AddrPos* curr, AddrPos* last, file_node* func_fi
 
     if (CLG_(clo).dump_bbs) {
 	if (curr->line != last->line) {
-	    VG_(sprintf)(outbuf, "ln=%d\n", curr->line);
-	    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+	    VG_(fdprintf)(fd, "ln=%d\n", curr->line);
 	}
     }
 }
@@ -498,22 +491,21 @@ static
 void fprint_pos(Int fd, AddrPos* curr, AddrPos* last)
 {
     if (0) //CLG_(clo).dump_bbs)
-	VG_(sprintf)(outbuf, "%lu ", curr->addr - curr->bb_addr);
+	VG_(fdprintf)(fd, "%lu ", curr->addr - curr->bb_addr);
     else {
-	int p = 0;
 	if (CLG_(clo).dump_instr) {
 	    int diff = curr->addr - last->addr;
 	    if ( CLG_(clo).compress_pos && (last->addr >0) && 
 		 (diff > -100) && (diff < 100)) {
 		if (diff >0)
-		    p = VG_(sprintf)(outbuf, "+%d ", diff);
+		    VG_(fdprintf)(fd, "+%d ", diff);
 		else if (diff==0)
-		    p = VG_(sprintf)(outbuf, "* ");
+		    VG_(fdprintf)(fd, "* ");
 	        else
-		    p = VG_(sprintf)(outbuf, "%d ", diff);
+		    VG_(fdprintf)(fd, "%d ", diff);
 	    }
 	    else
-		p = VG_(sprintf)(outbuf, "%#lx ", curr->addr);
+		VG_(fdprintf)(fd, "%#lx ", curr->addr);
 	}
 
 	if (CLG_(clo).dump_bb) {
@@ -521,14 +513,14 @@ void fprint_pos(Int fd, AddrPos* curr, AddrPos* last)
 	    if ( CLG_(clo).compress_pos && (last->bb_addr >0) && 
 		 (diff > -100) && (diff < 100)) {
 		if (diff >0)
-		    p += VG_(sprintf)(outbuf+p, "+%d ", diff);
+		    VG_(fdprintf)(fd, "+%d ", diff);
 		else if (diff==0)
-		    p += VG_(sprintf)(outbuf+p, "* ");
+		    VG_(fdprintf)(fd, "* ");
 	        else
-		    p += VG_(sprintf)(outbuf+p, "%d ", diff);
+		    VG_(fdprintf)(fd, "%d ", diff);
 	    }
 	    else
-		p += VG_(sprintf)(outbuf+p, "%#lx ", curr->bb_addr);
+		VG_(fdprintf)(fd, "%#lx ", curr->bb_addr);
 	}
 
 	if (CLG_(clo).dump_line) {
@@ -537,17 +529,16 @@ void fprint_pos(Int fd, AddrPos* curr, AddrPos* last)
 		 (diff > -100) && (diff < 100)) {
 
 		if (diff >0)
-		    VG_(sprintf)(outbuf+p, "+%d ", diff);
+		    VG_(fdprintf)(fd, "+%d ", diff);
 		else if (diff==0)
-		    VG_(sprintf)(outbuf+p, "* ");
+		    VG_(fdprintf)(fd, "* ");
 	        else
-		    VG_(sprintf)(outbuf+p, "%d ", diff);
+		    VG_(fdprintf)(fd, "%d ", diff);
 	    }
 	    else
-		VG_(sprintf)(outbuf+p, "%u ", curr->line);
+		VG_(fdprintf)(fd, "%u ", curr->line);
 	}
     }
-    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 }
 
 
@@ -558,9 +549,8 @@ void fprint_pos(Int fd, AddrPos* curr, AddrPos* last)
 static
 void fprint_cost(int fd, EventMapping* es, ULong* cost)
 {
-  const HChar *mcost = CLG_(mappingcost_as_string)(es, cost);
-  VG_(sprintf)(outbuf, "%s\n", mcost);
-  my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+  VG_(fdprintf)(fd, "%s\n",
+                CLG_(mappingcost_as_string)(es, cost));
   return;
 }
 
@@ -644,20 +634,19 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 	    
 	if (jcc->jmpkind == jk_CondJump) {
 	    /* format: jcnd=<followed>/<executions> <target> */
-	    VG_(sprintf)(outbuf, "jcnd=%llu/%llu ",
+	    VG_(fdprintf)(fd, "jcnd=%llu/%llu ",
 			 jcc->call_counter, ecounter);
 	}
 	else {
 	    /* format: jump=<jump count> <target> */
-	    VG_(sprintf)(outbuf, "jump=%llu ",
+	    VG_(fdprintf)(fd, "jump=%llu ",
 			 jcc->call_counter);
 	}
-	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 		
 	fprint_pos(fd, &target, last);
-	my_fwrite(fd, "\n", 1);
+	VG_(fdprintf)(fd, "\n");
 	fprint_pos(fd, curr, last);
-	my_fwrite(fd, "\n", 1);
+	VG_(fdprintf)(fd, "\n");
 
 	jcc->call_counter = 0;
 	return;
@@ -682,12 +671,10 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 	print_fn(fd, "cfn", jcc->to->cxt->fn[0]);
 
     if (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost)) {
-      VG_(sprintf)(outbuf, "calls=%llu ", 
-		   jcc->call_counter);
-	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+        VG_(fdprintf)(fd, "calls=%llu ", jcc->call_counter);
 
 	fprint_pos(fd, &target, last);
-	my_fwrite(fd, "\n", 1);	
+        VG_(fdprintf)(fd, "\n");	
 	fprint_pos(fd, curr, last);
 	fprint_cost(fd, CLG_(dumpmap), jcc->cost);
 
@@ -827,8 +814,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
       CLG_(add_and_zero_cost)( CLG_(sets).full,
 			      currCost->cost, bbcc->skipped );
 #if 0
-      VG_(sprintf)(outbuf, "# Skipped\n");
-      my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+      VG_(fdprintf)(fd, "# Skipped\n");
 #endif
       fprint_fcost(fd, currCost, last);
     }
@@ -850,7 +836,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
       fprint_apos(fd, &(currCost->p), last, bbcc->cxt->fn[0]->file);
       fprint_fcost(fd, currCost, last);
     }
-    if (CLG_(clo).dump_bbs) my_fwrite(fd, "\n", 1);
+    if (CLG_(clo).dump_bbs) VG_(fdprintf)(fd, "\n");
     
     /* when every cost was immediatly written, we must have done so,
      * as this function is only called when there's cost in a BBCC
@@ -1179,9 +1165,8 @@ BBCC** prepare_dump(void)
 static void fprint_cost_ln(int fd, const HChar* prefix,
 			   EventMapping* em, ULong* cost)
 {
-    VG_(sprintf)(outbuf, "%s%s\n", prefix,
-                 CLG_(mappingcost_as_string)(em, cost));
-    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
+    VG_(fdprintf)(fd, "%s%s\n", prefix,
+                  CLG_(mappingcost_as_string)(em, cost));
 }
 
 static ULong bbs_done = 0;
@@ -1436,7 +1421,7 @@ static void print_bbccs_of_thread(thread_info* ti)
 	/* switch back to file of function */
 	print_file(print_fd, "fe=", lastFnPos.cxt->fn[0]->file);
       }
-      my_fwrite(print_fd, "\n", 1);
+      VG_(fdprintf)(print_fd, "\n");
     }
     
     if (*p == 0) break;
