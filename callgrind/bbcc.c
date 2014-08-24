@@ -338,18 +338,26 @@ void insert_bbcc_into_hash(BBCC* bbcc)
 	     current_bbccs.entries);
 }
 
-static const HChar* mangled_cxt(Context* cxt, int rec_index)
+/* String is returned in a dynamically allocated buffer. Caller is
+   responsible for free'ing it. */
+static HChar* mangled_cxt(Context* cxt, Int rec_index)
 {
-    static HChar mangled[FN_NAME_LEN];
-    int i, p;
+    SizeT  size = 200;
+    HChar *mangled = CLG_MALLOC("cl.bbcc.mcxt", size);
+    Int i, p;
 
-    if (!cxt) return "(no context)";
+    if (!cxt) return VG_(strcpy)(mangled, "(no context)");
 
+    grow_buffer(&mangled, &size, VG_(strlen)(cxt->fn[0]->name) + 1);
     p = VG_(sprintf)(mangled, "%s", cxt->fn[0]->name);
-    if (rec_index >0)
+    if (rec_index >0) {
+        grow_buffer(&mangled, &size, p + 1 + 11 + 1);
 	p += VG_(sprintf)(mangled+p, "'%d", rec_index +1);
-    for(i=1;i<cxt->size;i++)
+    }
+    for(i=1;i<cxt->size;i++) {
+        grow_buffer(&mangled, &size, p + 1 + VG_(strlen)(cxt->fn[i]->name) + 1);
 	p += VG_(sprintf)(mangled+p, "'%s", cxt->fn[i]->name);
+    }
 
     return mangled;
 }
@@ -413,8 +421,8 @@ static BBCC* clone_bbcc(BBCC* orig, Context* cxt, Int rec_index)
     CLG_DEBUGIF(3)
       CLG_(print_bbcc)(-2, bbcc);
 
-    // FIXME: mangled_cxt returns a pointer to a static buffer that
-    // gets overwritten with each invocation. 
+    // FIXME: mangled_cxt returns a pointer to a dynamically allocated buffer
+    // that should be freed.
     CLG_DEBUG(2,"- clone_BBCC(%p, %d) for BB %#lx\n"
 		"   orig %s\n"
 		"   new  %s\n",

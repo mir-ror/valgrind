@@ -128,7 +128,6 @@ struct _CommandLineOptions {
 #define MIN_LINE_SIZE   16
 
 /* Size of various buffers used for storing strings */
-#define FN_NAME_LEN                    4096 /* for C++ code :-) */
 #define BUF_LEN                         512
 #define RESULTS_BUF_LEN                 256
 
