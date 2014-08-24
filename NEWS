@@ -20,6 +20,8 @@ Release 3.10.0 (?? ?????? 201?)
     ...) has several fields not initialised, an error is now reported for
     each field. Previously, an error was reported only for the first wrong
     field.
+  - new flag --show-mismatched-frees=no|yes [yes], to optionally disable
+    allocator/deallocator mismatch checking.
 
 * Helgrind:
   - Race condition error message with allocated blocks also show
@@ -213,6 +215,7 @@ where XXXXXX is the bug number as listed below.
 338160  implement display of thread local storage in gdbsrv
 338205  configure.ac and check for -Wno-tautological-compare
 338445  amd64 vbit-test fails with unknown opcodes used by arm64 VEX
+338499  --sim-hints parsing broken due to wrong order in tokens
 n-i-bz  Fix KVM_CREATE_IRQCHIP ioctl handling
 n-i-bz  s390x: Fix memory corruption for multithreaded applications
 n-i-bz  vex arm->IR: allow PC as basereg in some LDRD cases
