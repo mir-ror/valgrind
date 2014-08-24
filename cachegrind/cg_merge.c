@@ -479,18 +479,24 @@ static Bool parse_ULong ( /*OUT*/ULong* res, /*INOUT*/char** pptr)
 static 
 Counts* splitUpCountsLine ( SOURCE* s, /*OUT*/UWord* lnno, char* str )
 {
-#define N_TMPC 50
    Bool    ok;
    Counts* counts;
-   ULong   tmpC[N_TMPC];
-   Int     n_tmpC = 0;
+   Int     n_tmpC = 0, tmpCsize = 50;
+   ULong   *tmpC = malloc(tmpCsize * sizeof *tmpC);
+   if (tmpC == NULL)
+      mallocFail(s, "splitUpCountsLine:");
+     
    while (1) {
       ok = parse_ULong( &tmpC[n_tmpC], &str );
       if (!ok)
          break;
       n_tmpC++;
-      if (n_tmpC >= N_TMPC)
-         barf(s, "N_TMPC too low.  Increase and recompile.");
+      if (n_tmpC >= tmpCsize) {
+         tmpCsize += 50;
+         tmpC = realloc(tmpC, tmpCsize * sizeof *tmpC);
+         if (tmpC == NULL)
+            mallocFail(s, "splitUpCountsLine:");
+      }
    }
    if (*str != 0)
       parseError(s, "garbage in counts line");
@@ -503,9 +509,9 @@ Counts* splitUpCountsLine ( SOURCE* s, /*OUT*/UWord* lnno, char* str )
    } else {
       counts = new_Counts( n_tmpC, /*COPIED*/&tmpC[0] );
    }
+   free(tmpC);
 
    return counts;
-#undef N_TMPC
 }
 
 static void addCounts ( SOURCE* s, /*OUT*/Counts* counts1, Counts* counts2 )
