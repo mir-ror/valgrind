@@ -125,17 +125,13 @@ void init_fpos(FnPos* p)
 
 
 /*  POZOR! VORSICHT! XIAO XIN! KIKEN! OBS!
-    FIXME: my_fwrite used to employ a 32k buffer under the covers which are
-           now gone. If the files are large enough this could cause a
+    FIXME: Previously the code here used buffered (32k buffer) output when
+           writing to a file descriptor. This output machinery has been
+           replaced with VG_(fdprintf) which does not employ a buffer.
+           If the files are large enough the unbuffered output could cause a
            performance degradation. Needs to be looked at before the branch
            is merged to trunk. May have to add  VG_(fopen) etc if needed.
 */
-static __inline__
-void my_fwrite(Int fd, const HChar* buf, Int len)
-{
-	VG_(write)(fd, buf, len);
-}
-
 
 static void print_obj(Int fd, const HChar* prefix, obj_node* obj)
 {
@@ -168,23 +164,18 @@ static void print_obj(Int fd, const HChar* prefix, obj_node* obj)
 
 static void print_file(Int fd, const char *prefix, file_node* file)
 {
-    // 32 for file->number + peripheral characters
-    HChar buf[VG_(strlen)(prefix) + VG_(strlen)(file->name) + 32];
-
     if (CLG_(clo).compress_strings) {
 	CLG_ASSERT(file_dumped != 0);
 	if (file_dumped[file->number])
-            VG_(sprintf)(buf, "%s(%d)\n", prefix, file->number);
+            VG_(fdprintf)(fd, "%s(%d)\n", prefix, file->number);
 	else {
-            VG_(sprintf)(buf, "%s(%d) %s\n", prefix,
-			 file->number, file->name);
+            VG_(fdprintf)(fd, "%s(%d) %s\n", prefix,
+                          file->number, file->name);
 	    file_dumped[file->number] = True;
 	}
     }
     else
-        VG_(sprintf)(buf, "%s%s\n", prefix, file->name);
-
-    my_fwrite(fd, buf, VG_(strlen)(buf));
+        VG_(fdprintf)(fd, "%s%s\n", prefix, file->name);
 }
 
 /*
