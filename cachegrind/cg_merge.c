@@ -152,20 +152,32 @@ static void barf ( SOURCE* s, const char* msg )
    exit(1);
 }
 
-// Read a line
-#define M_LINEBUF 40960
-static char line[M_LINEBUF];
-
-// True if anything read, False if at EOF
-static Bool readline ( SOURCE* s )
+// Read a line. Return the line read, or NULL if at EOF.
+// The line is allocated dynamically but will be overwritten with
+// every invocation. Caller must not free it.
+static const char *readline ( SOURCE* s )
 {
+   static char *line = NULL;
+   static size_t linesiz;
+
+   if (line == NULL) {
+      linesiz = 1000;
+      line = malloc(linesiz * sizeof *line);
+      if (line == NULL)
+         mallocFail(s, "readline:");
+   }
+
    int ch, i = 0;
    line[0] = 0;
    while (1) {
-      if (i >= M_LINEBUF-10)
-         parseError(s, "Unexpected long line in input file");
       ch = getc(s->fp);
       if (ch != EOF) {
+          if (i == linesiz - 1) {
+             linesiz += 1000;
+             line = realloc(line, linesiz * sizeof *line);
+             if (line == NULL)
+                mallocFail(s, "readline:");
+          }
           line[i++] = ch;
           line[i] = 0;
           if (ch == '\n') {
@@ -183,7 +195,7 @@ static Bool readline ( SOURCE* s )
          }
       }
    }
-   return line[0] != 0;
+   return line[0] != 0 ? line : NULL;
 }
 
 static Bool streqn ( const char* s1, const char* s2, size_t n )
@@ -452,10 +464,10 @@ static Word cmp_unboxed_UWord ( Word s1, Word s2 )
 
 ////////////////////////////////////////////////////////////////
 
-static Bool parse_ULong ( /*OUT*/ULong* res, /*INOUT*/char** pptr)
+static Bool parse_ULong ( /*OUT*/ULong* res, /*INOUT*/const char** pptr)
 {
    ULong u64;
-   char* ptr = *pptr;
+   const char* ptr = *pptr;
    while (isspace(*ptr)) ptr++;
    if (!isdigit(*ptr)) {
       *pptr = ptr;
@@ -477,7 +489,7 @@ static Bool parse_ULong ( /*OUT*/ULong* res, /*INOUT*/char** pptr)
 // number as a line number and assign it to *lnno instead of
 // incorporating it in the counts array.
 static 
-Counts* splitUpCountsLine ( SOURCE* s, /*OUT*/UWord* lnno, char* str )
+Counts* splitUpCountsLine ( SOURCE* s, /*OUT*/UWord* lnno, const char* str )
 {
    Bool    ok;
    Counts* counts;
@@ -544,7 +556,7 @@ static Bool addCountsToMap ( SOURCE* s,
 static
 void handle_counts ( SOURCE* s,
                      CacheProfFile* cpf, 
-                     const char* fi, const char* fn, char* newCountsStr )
+                     const char* fi, const char* fn, const char* newCountsStr )
 {
    WordFM* countsMap;
    Bool    freeNewCounts;
@@ -606,7 +618,6 @@ void handle_counts ( SOURCE* s,
 static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
 {
    Int            i;
-   Bool           b;
    char**         tmp_desclines;
    unsigned       tmp_desclines_size;
    char*          p;
@@ -615,6 +626,7 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
    Counts*        summaryRead; 
    char*          curr_fn = strdup("???");
    char*          curr_fl = strdup("???");
+   const char*    line;
 
    cpf = new_CacheProfFile( NULL, NULL, NULL, 0, NULL, NULL, NULL );
    if (cpf == NULL)
@@ -627,8 +639,8 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
 
    // Parse "desc:" lines
    while (1) {
-      b = readline(s);
-      if (!b) 
+      line = readline(s);
+      if (!line) 
          break;
       if (!streqn(line, "desc: ", 6))
          break;
@@ -662,8 +674,8 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
       mallocFail(s, "parse_CacheProfFile(3)");
 
    // Parse "events:" line and figure out how many events there are
-   b = readline(s);
-   if (!b)
+   line = readline(s);
+   if (!line)
       parseError(s, "parse_CacheProfFile: eof before EVENTS line");
    if (!streqn(line, "events: ", 8))
       parseError(s, "parse_CacheProfFile: no EVENTS line present");
@@ -693,8 +705,8 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
 
    // process count lines
    while (1) {
-      b = readline(s);
-      if (!b)
+      line = readline(s);
+      if (!line)
          parseError(s, "parse_CacheProfFile: eof before SUMMARY line");
 
       if (isdigit(line[0])) {
@@ -730,8 +742,8 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
       mallocFail(s, "parse_CacheProfFile(6)");
 
    // there should be nothing more
-   b = readline(s);
-   if (b)
+   line = readline(s);
+   if (line)
       parseError(s, "parse_CacheProfFile: "
                     "extraneous content after SUMMARY line");
 
