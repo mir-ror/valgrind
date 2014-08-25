@@ -605,11 +605,10 @@ void handle_counts ( SOURCE* s,
 */
 static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
 {
-#define M_TMP_DESCLINES 10
-
    Int            i;
    Bool           b;
-   char*          tmp_desclines[M_TMP_DESCLINES];
+   char**         tmp_desclines;
+   unsigned       tmp_desclines_size;
    char*          p;
    int            n_tmp_desclines = 0;
    CacheProfFile* cpf;
@@ -621,6 +620,11 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
    if (cpf == NULL)
       mallocFail(s, "parse_CacheProfFile(1)");
 
+   tmp_desclines_size = 100;
+   tmp_desclines = malloc(tmp_desclines_size * sizeof *tmp_desclines);
+   if (tmp_desclines == NULL)
+      mallocFail(s, "parse_CacheProfFile(1)");
+
    // Parse "desc:" lines
    while (1) {
       b = readline(s);
@@ -628,8 +632,13 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
          break;
       if (!streqn(line, "desc: ", 6))
          break;
-      if (n_tmp_desclines >= M_TMP_DESCLINES)
-         barf(s, "M_TMP_DESCLINES too low; increase and recompile");
+      if (n_tmp_desclines >= tmp_desclines_size) {
+         tmp_desclines_size += 100;
+         tmp_desclines = realloc(tmp_desclines,
+                                 tmp_desclines_size * sizeof *tmp_desclines);
+         if (tmp_desclines == NULL)
+            mallocFail(s, "parse_CacheProfFile(1)");
+      }
       tmp_desclines[n_tmp_desclines++] = strdup(line);
    }
 
@@ -748,13 +757,12 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
       cpf->summary_line = NULL;
    }
 
+   free(tmp_desclines);
    free(curr_fn);
    free(curr_fl);
 
    // All looks OK
    return cpf;
-
-#undef N_TMP_DESCLINES  
 }
 
 
