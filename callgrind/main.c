@@ -1523,7 +1523,7 @@ static void dump_state_of_thread_togdb(thread_info* ti)
 static void dump_state_togdb(void)
 {
     thread_info** th;
-    int t, p;
+    int t;
     Int orig_tid = CLG_(current_tid);
 
     VG_(gdb_printf)("instrumentation: %s\n",
