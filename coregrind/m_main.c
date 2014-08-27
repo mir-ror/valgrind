@@ -386,6 +386,16 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
    }
 }
 
+static void
+maybe_resize_array_of_strings(ArrayOfStrings *aos, UInt amount)
+{
+   if (aos->n_used == aos->n_allocated) {
+      aos->n_allocated += amount;
+      aos->names = VG_(realloc)("clo", aos->names, aos->n_allocated);
+   }
+}
+
+
 /* The main processing for command line options.  See comments above
    on early_process_cmd_line_options.
 
@@ -701,34 +711,19 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                           VG_(clo_default_supp)) { }
 
       else if VG_STR_CLO(arg, "--suppressions", tmp_str) {
-         if (VG_(clo_n_suppressions) >= VG_CLO_MAX_SFILES) {
-            VG_(fmsg_bad_option)(arg,
-               "Too many suppression files specified.\n"
-               "Increase VG_CLO_MAX_SFILES and recompile.\n");
-         }
-         VG_(clo_suppressions)[VG_(clo_n_suppressions)] = tmp_str;
-         VG_(clo_n_suppressions)++;
+         maybe_resize_array_of_strings(&VG_(clo_suppressions), 10);
+         VG_(clo_suppressions).names[VG_(clo_suppressions).n_used++] = tmp_str;
       }
 
       else if VG_STR_CLO (arg, "--fullpath-after", tmp_str) {
-         if (VG_(clo_n_fullpath_after) >= VG_CLO_MAX_FULLPATH_AFTER) {
-            VG_(fmsg_bad_option)(arg,
-               "Too many --fullpath-after= specifications.\n"
-               "Increase VG_CLO_MAX_FULLPATH_AFTER and recompile.\n");
-         }
-         VG_(clo_fullpath_after)[VG_(clo_n_fullpath_after)] = tmp_str;
-         VG_(clo_n_fullpath_after)++;
+         maybe_resize_array_of_strings(&VG_(clo_fullpath_after), 10);
+         VG_(clo_fullpath_after).names[VG_(clo_fullpath_after).n_used++] = tmp_str;
       }
 
       else if VG_STR_CLO (arg, "--extra-debuginfo-path",
                       VG_(clo_extra_debuginfo_path)) {}
 
       else if VG_STR_CLO(arg, "--require-text-symbol", tmp_str) {
-         if (VG_(clo_n_req_tsyms) >= VG_CLO_MAX_REQ_TSYMS) {
-            VG_(fmsg_bad_option)(arg,
-               "Too many --require-text-symbol= specifications.\n"
-               "Increase VG_CLO_MAX_REQ_TSYMS and recompile.\n");
-         }
          /* String needs to be of the form C?*C?*, where C is any
             character, but is the same both times.  Having it in this
             form facilitates finding the boundary between the sopatt
@@ -749,8 +744,8 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
             VG_(fmsg_bad_option)(arg,
                "Invalid --require-text-symbol= specification.\n");
          }
-         VG_(clo_req_tsyms)[VG_(clo_n_req_tsyms)] = tmp_str;
-         VG_(clo_n_req_tsyms)++;
+         maybe_resize_array_of_strings(&VG_(clo_req_tsyms), 10);
+         VG_(clo_req_tsyms).names[VG_(clo_req_tsyms).n_used++] = tmp_str;
       }
 
       /* "stuvwxyz" --> stuvwxyz (binary) */
@@ -1125,7 +1120,6 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
    // Suppressions related stuff
 
    if (VG_(clo_default_supp) &&
-       VG_(clo_n_suppressions) < VG_CLO_MAX_SFILES-1 &&
        (VG_(needs).core_errors || VG_(needs).tool_errors)) {
       /* If we haven't reached the max number of suppressions, load
          the default one. */
@@ -1133,8 +1127,8 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       Int len = VG_(strlen)(VG_(libdir)) + 1 + sizeof(default_supp);
       HChar *buf = VG_(arena_malloc)(VG_AR_CORE, "main.mpclo.3", len);
       VG_(sprintf)(buf, "%s/%s", VG_(libdir), default_supp);
-      VG_(clo_suppressions)[VG_(clo_n_suppressions)] = buf;
-      VG_(clo_n_suppressions)++;
+      maybe_resize_array_of_strings(&VG_(clo_suppressions), 10);
+      VG_(clo_suppressions).names[VG_(clo_suppressions).n_used++] = buf;
    }
 
    *logging_to_fd = log_to == VgLogTo_Fd || log_to == VgLogTo_Socket;
