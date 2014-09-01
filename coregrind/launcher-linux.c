@@ -125,9 +125,12 @@ static const char *find_client(const char *clientname)
 static const char *select_platform(const char *clientname)
 {
    int fd;
-   char header[4096];
+   char *header, *chunk;
    ssize_t n_bytes;
    const char *platform = NULL;
+   const size_t chunk_size = 4096;
+
+   assert(chunk_size > sizeof(Elf64_Ehdr));
 
    VG_(debugLog)(2, "launcher", "selecting platform for '%s'\n", clientname);
 
@@ -138,13 +141,17 @@ static const char *select_platform(const char *clientname)
 
    if ((fd = open(clientname, O_RDONLY)) < 0)
       return NULL;
-   //   barf("open(%s): %s", clientname, strerror(errno));
 
    VG_(debugLog)(2, "launcher", "opened '%s'\n", clientname);
 
-   n_bytes = read(fd, header, sizeof(header));
-   close(fd);
+   header = chunk = malloc(chunk_size);
+   if (chunk == NULL)
+      barf("malloc of chunk failed.");
+     
+   n_bytes = read(fd, chunk, chunk_size);
    if (n_bytes < 2) {
+      close(fd);
+      free(chunk);
       return NULL;
    }
 
@@ -153,28 +160,52 @@ static const char *select_platform(const char *clientname)
 
    if (header[0] == '#' && header[1] == '!') {
       int i = 2;
-      char *interp = (char *)header + 2;
 
       // Skip whitespace.
       while (1) {
-         if (i == n_bytes) return NULL;
-         if (' ' != header[i] && '\t' != header[i]) break;
-         i++;
+         if (i == n_bytes) {
+            n_bytes = read(fd, chunk, chunk_size);
+            if (n_bytes <= 0) {   // EOF or read error
+               close(fd);
+               free(chunk);
+               return NULL;
+            }
+            i = 0;
+         } else {
+            if (chunk[i] != ' ' && chunk[i] != '\t') break;
+            i++;
+         }
       }
 
       // Get the interpreter name.
-      interp = &header[i];
+      unsigned interp_begin = i;
+      unsigned count = 2, j = i;
       while (1) {
-         if (i == n_bytes) break;
-         if (isspace(header[i])) break;
-         i++;
+         if (j == n_bytes) {
+            chunk = realloc(chunk, count++ * chunk_size);
+            if (chunk == NULL)
+               barf("realloc of chunk failed.");
+            n_bytes = read(fd, chunk+i, chunk_size);
+            if (n_bytes <= 0) {   // EOF or read error
+               close(fd);
+               free(chunk);
+               return NULL;
+            }
+            j = 0;   // reset index into current chunk
+         } else {
+            if (isspace(chunk[i])) break;
+            i++;
+            j++;
+         }
       }
-      if (i == n_bytes) return NULL;
-      header[i] = '\0';
+      chunk[i] = '\0';
+      close(fd);
 
-      platform = select_platform(interp);
+      platform = select_platform(chunk + interp_begin);
+      free(chunk);
 
    } else if (n_bytes >= SELFMAG && memcmp(header, ELFMAG, SELFMAG) == 0) {
+      close(fd);
 
       if (n_bytes >= sizeof(Elf32_Ehdr) && header[EI_CLASS] == ELFCLASS32) {
          const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
@@ -255,6 +286,7 @@ static const char *select_platform(const char *clientname)
 #           endif
          }
       }
+      free(chunk);
    }
 
    VG_(debugLog)(2, "launcher", "selected platform '%s'\n",
