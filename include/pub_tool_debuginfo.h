@@ -262,11 +262,9 @@ typedef
 const HChar* VG_(pp_SectKind)( VgSectKind kind );
 
 /* Given an address 'a', make a guess of which section of which object
-   it comes from.  If name is non-NULL, then the last n_name-1
-   characters of the object's name is put in name[0 .. n_name-2], and
-   name[n_name-1] is set to zero (guaranteed zero terminated). */
-VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar* name, SizeT n_name, 
-                                     Addr a);
+   it comes from.  If name is non-NULL, then the object's name is put
+   into *name. */
+VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar** name, Addr a);
 
 
 #endif   // __PUB_TOOL_DEBUGINFO_H

@@ -162,8 +162,11 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
    VG_(memset)( &ai->Addr.SectKind.objname, 
                 0, sizeof(ai->Addr.SectKind.objname));
    VG_(strcpy)( ai->Addr.SectKind.objname, "???" );
-   sect = VG_(DebugInfo_sect_kind)( &ai->Addr.SectKind.objname[0],
-                                    sizeof(ai->Addr.SectKind.objname)-1, a);
+   HChar *temp_name;
+   sect = VG_(DebugInfo_sect_kind)( &temp_name, a);
+   VG_(strncpy)(ai->Addr.SectKind.objname, temp_name,
+                sizeof(ai->Addr.SectKind.objname)-1);
+
    if (sect != Vg_SectUnknown) {
       ai->tag = Addr_SectKind;
       ai->Addr.SectKind.kind = sect;
