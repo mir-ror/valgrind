@@ -1427,13 +1427,13 @@ static void cc_analyse_alloc_arena ( ArenaId aid )
          if (!blockSane(a, b)) {
             VG_(printf)("sanity_check_malloc_arena: sb %p, block %ld "
                         "(bszB %lu):  BAD\n", sb, i, b_bszB );
-            tl_assert(0);
+            vg_assert(0);
          }
          thisFree = !is_inuse_block(b);
          if (thisFree && lastWasFree) {
             VG_(printf)("sanity_check_malloc_arena: sb %p, block %ld "
                         "(bszB %lu): UNMERGED FREES\n", sb, i, b_bszB );
-            tl_assert(0);
+            vg_assert(0);
          }
          lastWasFree = thisFree;
 
@@ -1448,35 +1448,35 @@ static void cc_analyse_alloc_arena ( ArenaId aid )
                      (Int)(!thisFree), 
                      (Int)bszB_to_pszB(a, b_bszB),
                      get_cc(b));
-         tl_assert(cc);
+         vg_assert(cc);
          for (k = 0; k < n_ccs; k++) {
-           tl_assert(anCCs[k].cc);
+           vg_assert(anCCs[k].cc);
             if (0 == VG_(strcmp)(cc, anCCs[k].cc))
                break;
          }
-         tl_assert(k >= 0 && k <= n_ccs);
+         vg_assert(k >= 0 && k <= n_ccs);
 
          if (k == n_ccs) {
-            tl_assert(n_ccs < N_AN_CCS-1);
+            vg_assert(n_ccs < N_AN_CCS-1);
             n_ccs++;
             anCCs[k].nBytes  = 0;
             anCCs[k].nBlocks = 0;
             anCCs[k].cc      = cc;
          }
 
-         tl_assert(k >= 0 && k < n_ccs && k < N_AN_CCS);
+         vg_assert(k >= 0 && k < n_ccs && k < N_AN_CCS);
          anCCs[k].nBytes += (ULong)bszB_to_pszB(a, b_bszB);
          anCCs[k].nBlocks++;
       }
       if (i > sb->n_payload_bytes) {
          VG_(printf)( "sanity_check_malloc_arena: sb %p: last block "
                       "overshoots end\n", sb);
-         tl_assert(0);
+         vg_assert(0);
       }
    }
 
    if (a->stats__perm_bytes_on_loan > 0) {
-      tl_assert(n_ccs < N_AN_CCS-1);
+      vg_assert(n_ccs < N_AN_CCS-1);
       anCCs[n_ccs].nBytes  = a->stats__perm_bytes_on_loan;
       anCCs[n_ccs].nBlocks = a->stats__perm_blocks;
       anCCs[n_ccs].cc      = "perm_malloc";
@@ -1673,6 +1673,9 @@ void add_one_block_to_stats (Arena* a, SizeT loaned)
    a->stats__tot_bytes  += (ULong)loaned;
 }
 
+/* Allocate a piece of memory of req_pszB bytes on the given arena.
+   The function may return NULL if (and only if) aid == VG_AR_CLIENT.
+   Otherwise, the function returns a non-NULL value. */
 void* VG_(arena_malloc) ( ArenaId aid, const HChar* cc, SizeT req_pszB )
 {
    SizeT       req_bszB, frag_bszB, b_bszB;
@@ -2571,6 +2574,7 @@ void* VG_(arena_perm_malloc) ( ArenaId aid, SizeT size, Int align  )
 
 // All just wrappers to avoid exposing arenas to tools.
 
+// This function never returns NULL.
 void* VG_(malloc) ( const HChar* cc, SizeT nbytes )
 {
    return VG_(arena_malloc) ( VG_AR_CORE, cc, nbytes );
@@ -2591,17 +2595,16 @@ void* VG_(realloc) ( const HChar* cc, void* ptr, SizeT size )
    return VG_(arena_realloc) ( VG_AR_CORE, cc, ptr, size );
 }
 
+void VG_(realloc_shrink) ( void* ptr, SizeT size )
+{
+   VG_(arena_realloc_shrink) ( VG_AR_CORE, ptr, size );
+}
+
 HChar* VG_(strdup) ( const HChar* cc, const HChar* s )
 {
    return VG_(arena_strdup) ( VG_AR_CORE, cc, s ); 
 }
 
-// Useful for querying user blocks.           
-SizeT VG_(malloc_usable_size) ( void* p )                    
-{                                                            
-   return VG_(arena_malloc_usable_size)(VG_AR_CLIENT, p);
-}                                                            
-  
 void* VG_(perm_malloc) ( SizeT size, Int align  )
 {
    return VG_(arena_perm_malloc) ( VG_AR_CORE, size, align );

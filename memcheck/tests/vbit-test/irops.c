@@ -465,7 +465,7 @@ static irop_t irops[] = {
   { DEFOP(Iop_Dup8x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Dup16x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Dup32x2, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_Extract64, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_Slice64, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Reverse8sIn16_x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Reverse8sIn32_x2, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Reverse16sIn32_x2, UNDEF_UNKNOWN), },
@@ -927,7 +927,7 @@ static irop_t irops[] = {
   { DEFOP(Iop_Dup8x16, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Dup16x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Dup32x4, UNDEF_UNKNOWN), },
-  { DEFOP(Iop_ExtractV128, UNDEF_UNKNOWN), },
+  { DEFOP(Iop_SliceV128, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Reverse8sIn16_x8, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Reverse8sIn32_x4, UNDEF_UNKNOWN), },
   { DEFOP(Iop_Reverse16sIn32_x4, UNDEF_UNKNOWN), },
@@ -1087,6 +1087,7 @@ get_irop(IROp op)
             rc /= 256;
             if (rc != 0) return NULL;
          }
+         break;
          /* PFPO Iops */
          case Iop_F32toD32:
          case Iop_F32toD64:
@@ -1113,6 +1114,7 @@ get_irop(IROp op)
             rc /= 256;
             if (rc != 0) return NULL;
          }
+         break;
          }
          return p->s390x ? p : NULL;
 #endif

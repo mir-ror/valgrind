@@ -44,7 +44,7 @@ void sr_extended_perror (SysRes sr, const HChar *msg)
       Int i;
       vki_sigset_t cursigset;
       VG_(show_sched_status) (True,  // host_stacktrace
-                              True,  // valgrind_stack_usage
+                              True,  // stack_usage
                               True); // exited_threads
       VG_(sigprocmask) (0,           // dummy how.
                         NULL,        // do not change the sigmask
@@ -323,10 +323,12 @@ void remote_open (const HChar *name)
    user = VG_(getenv)("LOGNAME");
    if (user == NULL) user = VG_(getenv)("USER");
    if (user == NULL) user = "???";
+   if (VG_(strchr)(user, '/')) user = "???";
 
    host = VG_(getenv)("HOST");
    if (host == NULL) host = VG_(getenv)("HOSTNAME");
    if (host == NULL) host = "???";
+   if (VG_(strchr)(host, '/')) host = "???";
 
    len = strlen(name) + strlen(user) + strlen(host) + 40;
 
@@ -390,11 +392,6 @@ void remote_open (const HChar *name)
       VG_(unlink)(to_gdb);
       VG_(unlink)(shared_mem);
 
-      safe_mknod(from_gdb);
-      safe_mknod(to_gdb);
-
-      pid_from_to_creator = pid;
-      
       o = VG_(open) (shared_mem, VKI_O_CREAT|VKI_O_RDWR, 0600);
       if (sr_isError (o)) {
          sr_perror(o, "cannot create shared_mem file %s\n", shared_mem);
@@ -421,6 +418,15 @@ void remote_open (const HChar *name)
       }
       shared = (VgdbShared*) addr_shared;
       VG_(close) (shared_mem_fd);
+
+      safe_mknod(to_gdb);
+      safe_mknod(from_gdb);
+      /* from_gdb is the last resource created: vgdb searches such FIFOs
+         to detect the presence of a valgrind process.
+         So, we better create this resource when all the rest needed by
+         vgdb is ready : the other FIFO and the shared memory. */
+
+      pid_from_to_creator = pid;
    }
    
    setup_remote_desc_for_reading ();
@@ -830,6 +836,7 @@ int putpkt_binary (char *buf, int cnt)
    /* we might have to write a pkt when out FIFO not yet/anymore opened */
    if (!ensure_write_remote_desc()) {
       warning ("putpkt(write) error: no write_remote_desc\n");
+      free (buf2);
       return -1;
    }
 
@@ -839,6 +846,7 @@ int putpkt_binary (char *buf, int cnt)
    do {
       if (VG_(write) (write_remote_desc, buf2, p - buf2) != p - buf2) {
          warning ("putpkt(write) error\n");
+         free (buf2);
          return -1;
       }
 

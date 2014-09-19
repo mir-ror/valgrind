@@ -38,6 +38,7 @@ DRD_CFLAGS =				\
   -O2					\
   @FLAG_W_EXTRA@			\
   -Wformat-nonliteral			\
+  -Wswitch-enum			        \
   -Wno-inline				\
   -Wno-unused-parameter
 
@@ -136,7 +137,7 @@ vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) $(AM_CFLAGS_PIC) $(DRD_CFLAGS)
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_PRI_CAPS@) $(DRD_CFLAGS)
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
@@ -149,7 +150,7 @@ vgpreload_drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) $(AM_CFLAGS_PIC) $(DRD_CFLAGS)
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_SEC_CAPS@) $(DRD_CFLAGS)
 vgpreload_drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \

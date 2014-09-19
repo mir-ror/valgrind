@@ -109,7 +109,8 @@ static void usage_NORETURN ( Bool debug_help )
 "                              to get started quickly, use --vgdb-error=0\n"
 "                              and follow the on-screen directions\n"
 "    --vgdb-stop-at=event1,event2,... invoke gdbserver for given events [none]\n"
-"         where event is one of startup exit valgrindabexit all none\n"
+"         where event is one of:\n"
+"           startup exit valgrindabexit all none\n"
 "    --track-fds=no|yes        track open file descriptors? [no]\n"
 "    --time-stamp=no|yes       add timestamps to log messages? [no]\n"
 "    --log-fd=<number>         log messages to file descriptor [2=stderr]\n"
@@ -132,6 +133,7 @@ static void usage_NORETURN ( Bool debug_help )
 "    --suppressions=<filename> suppress errors described in <filename>\n"
 "    --gen-suppressions=no|yes|all    print suppressions for errors? [no]\n"
 "    --db-attach=no|yes        start debugger when errors detected? [no]\n"
+"                              Note: deprecated feature\n"
 "    --db-command=<command>    command to start debugger [%s -nw %%f %%p]\n"
 "    --input-fd=<number>       file descriptor for input [0=stdin]\n"
 "    --dsymutil=no|yes         run dsymutil on Mac OS X when helpful? [no]\n"
@@ -165,7 +167,9 @@ static void usage_NORETURN ( Bool debug_help )
 "                              code found in stacks, for all code, or for all\n"
 "                              code except that from file-backed mappings\n"
 "    --read-inline-info=yes|no read debug info about inlined function calls\n"
-"                              and use it to do better stack traces [no]\n"
+"                              and use it to do better stack traces.  [yes]\n"
+"                              on Linux/Android for Memcheck/Helgrind/DRD\n"
+"                              only.  [no] for all other tools and platforms.\n"
 "    --read-var-info=yes|no    read debug info on stack and global variables\n"
 "                              and use it to print better error messages in\n"
 "                              tools that make use of it (Memcheck, Helgrind,\n"
@@ -175,12 +179,15 @@ static void usage_NORETURN ( Bool debug_help )
 "    --vgdb-prefix=<prefix>    prefix for vgdb FIFOs [%s]\n"
 "    --run-libc-freeres=no|yes free up glibc memory at exit on Linux? [yes]\n"
 "    --sim-hints=hint1,hint2,...  activate unusual sim behaviours [none] \n"
-"         where hint is one of lax-ioctls fuse-compatible enable-outer\n"
+"         where hint is one of:\n"
+"           lax-ioctls fuse-compatible enable-outer\n"
 "           no-inner-prefix no-nptl-pthread-stackcache none\n"
 "    --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]\n"
-"    --kernel-variant=variant1,variant2,...  handle non-standard kernel"
-                                                               " variants [none]\n"
-"         where variant is one of bproc none\n"
+"    --kernel-variant=variant1,variant2,...\n"
+"         handle non-standard kernel variants [none]\n"
+"         where variant is one of:\n"
+"           bproc android-no-hw-tls\n"
+"           android-gpu-sgx5xx android-gpu-adreno3xx none\n"
 "    --merge-recursive-frames=<number>  merge frames between identical\n"
 "           program counters in max <number> frames) [0]\n"
 "    --num-transtab-sectors=<number> size of translated code cache [%d]\n"
@@ -636,7 +643,11 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                                                     VG_(clo_smc_check),
                                                     Vg_SmcAllNonFile);
 
-      else if VG_USETX_CLO (arg, "--kernel-variant", "bproc",
+      else if VG_USETX_CLO (arg, "--kernel-variant",
+                            "bproc,"
+                            "android-no-hw-tls,"
+                            "android-gpu-sgx5xx,"
+                            "android-gpu-adreno3xx",
                             VG_(clo_kernel_variant)) {}
 
       else if VG_BOOL_CLO(arg, "--dsymutil",        VG_(clo_dsymutil)) {}
@@ -809,6 +820,12 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
    }
 
    /* END command-line processing loop */
+
+   /* Notify about deprecated features */
+   if (VG_(clo_db_attach))
+      VG_(umsg)
+         ("\nWarning: --db-attach is a deprecated feature which will be\n"
+          "   removed in the next release. Use --vgdb-error=1 instead\n\n");
 
    /* Determine the path prefix for vgdb */
    if (VG_(clo_vgdb_prefix) == NULL)
@@ -1125,7 +1142,7 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
          the default one. */
       static const HChar default_supp[] = "default.supp";
       Int len = VG_(strlen)(VG_(libdir)) + 1 + sizeof(default_supp);
-      HChar *buf = VG_(arena_malloc)(VG_AR_CORE, "main.mpclo.3", len);
+      HChar *buf = VG_(malloc)("main.mpclo.3", len);
       VG_(sprintf)(buf, "%s/%s", VG_(libdir), default_supp);
       maybe_resize_array_of_strings(&VG_(clo_suppressions), 10);
       VG_(clo_suppressions).names[VG_(clo_suppressions).n_used++] = buf;
@@ -1646,7 +1663,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    vg_assert(VKI_PAGE_SIZE <= VKI_MAX_PAGE_SIZE);
    vg_assert(VKI_PAGE_SIZE     == (1 << VKI_PAGE_SHIFT));
    vg_assert(VKI_MAX_PAGE_SIZE == (1 << VKI_MAX_PAGE_SHIFT));
-   the_iicii.clstack_top = VG_(am_startup)( the_iicii.sp_at_startup );
+   the_iicii.clstack_end = VG_(am_startup)( the_iicii.sp_at_startup );
    VG_(debugLog)(1, "main", "Address space manager is running\n");
 
    //--------------------------------------------------------------
@@ -1659,7 +1676,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Starting the dynamic memory manager\n");
    { void* p = VG_(malloc)( "main.vm.1", 12345 );
-     if (p) VG_(free)( p );
+     VG_(free)( p );
    }
    VG_(debugLog)(1, "main", "Dynamic memory manager is running\n");
 
@@ -1785,6 +1802,22 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    VG_(debugLog)(1, "main",
                     "(early_) Process Valgrind's command line options\n");
    early_process_cmd_line_options(&need_help, &toolname);
+
+   // BEGIN HACK
+   vg_assert(toolname != NULL);
+   vg_assert(VG_(clo_read_inline_info) == False);
+#  if !defined(VGO_darwin)
+   if (0 == VG_(strcmp)(toolname, "memcheck")
+       || 0 == VG_(strcmp)(toolname, "helgrind")
+       || 0 == VG_(strcmp)(toolname, "drd")) {
+      /* Change the default setting.  Later on (just below)
+         main_process_cmd_line_options should pick up any
+         user-supplied setting for it and will override the default
+         set here. */
+      VG_(clo_read_inline_info) = True;
+   }
+#  endif
+   // END HACK
 
    // Set default vex control params
    LibVEX_default_VexControl(& VG_(clo_vex_control));
@@ -1985,7 +2018,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
       Bool  ok;
       ok = VG_(sanity_check_needs)( &s );
       if (!ok) {
-         VG_(tool_panic)(s);
+         VG_(core_panic)(s);
       }
    }
 
@@ -2071,10 +2104,9 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Load initial debug info\n");
 
-   tl_assert(!addr2dihandle);
+   vg_assert(!addr2dihandle);
    addr2dihandle = VG_(newXA)( VG_(malloc), "main.vm.2",
                                VG_(free), sizeof(Addr_n_ULong) );
-   tl_assert(addr2dihandle);
 
 #  if defined(VGO_linux)
    { Addr* seg_starts;
@@ -2179,12 +2211,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    { Addr*     seg_starts;
      Int       n_seg_starts;
 
-     tl_assert(addr2dihandle);
+     vg_assert(addr2dihandle);
 
      /* Mark the main thread as running while we tell the tool about
         the client memory so that the tool can associate that memory
         with the main thread. */
-     tl_assert(VG_(running_tid) == VG_INVALID_THREADID);
+     vg_assert(VG_(running_tid) == VG_INVALID_THREADID);
      VG_(running_tid) = tid_main;
 
      seg_starts = VG_(get_segment_starts)( &n_seg_starts );
@@ -2231,7 +2263,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
            for (j = 0; j < n; j++) {
               Addr_n_ULong* anl = VG_(indexXA)( addr2dihandle, j );
               if (anl->a == seg->start) {
-                  tl_assert(anl->ull > 0); /* check it's a valid handle */
+                  vg_assert(anl->ull > 0); /* check it's a valid handle */
                   break;
               }
            }
@@ -2287,7 +2319,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
      /* Clear the running thread indicator */
      VG_(running_tid) = VG_INVALID_THREADID;
-     tl_assert(VG_(running_tid) == VG_INVALID_THREADID);
+     vg_assert(VG_(running_tid) == VG_INVALID_THREADID);
 
      /* Darwin only: tell the tools where the client's kernel commpage
         is.  It would be better to do this by telling aspacemgr about
@@ -2357,7 +2389,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    // register client stack
    //--------------------------------------------------------------
-   VG_(clstk_id) = VG_(register_stack)(VG_(clstk_base), VG_(clstk_end));
+   VG_(clstk_id) = VG_(register_stack)(VG_(clstk_start_base), VG_(clstk_end));
 
    //--------------------------------------------------------------
    // Show the address space state so far

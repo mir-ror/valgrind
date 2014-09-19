@@ -108,7 +108,7 @@ static void add_to__printf_buf ( HChar c, void *p )
    }
    b->buf[b->buf_used++] = c;
    b->buf[b->buf_used]   = 0;
-   tl_assert(b->buf_used < sizeof(b->buf));
+   vg_assert(b->buf_used < sizeof(b->buf));
 }
 
 static UInt vprintf_to_buf ( printf_buf_t* b,
@@ -381,7 +381,7 @@ void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, HChar buf[])
       case 1: ex = 10;    break;
       case 2: ex = 100;   break;
       case 3: ex = 1000;  break;
-      default: VG_(tool_panic)("Currently can only handle 3 decimal places");
+      default: VG_(core_panic)("Currently can only handle 3 decimal places");
       }
       p2 = ((100*n*ex) / m) % ex;
       // Have to generate the format string in order to be flexible about

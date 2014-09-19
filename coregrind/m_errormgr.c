@@ -310,7 +310,7 @@ static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
             VG_(printf)("\nUnhandled error type: %u. VG_(needs).tool_errors\n"
                         "probably needs to be set.\n",
                         e1->ekind);
-            VG_(tool_panic)("unhandled error type");
+            VG_(core_panic)("unhandled error type");
          }
    }
 }
@@ -386,7 +386,6 @@ static void gen_suppression(Error* err)
       mode.  So generate it into TEXT. */
    text = VG_(newXA)( VG_(malloc), "errormgr.gen_suppression.1",
                       VG_(free), sizeof(HChar) );
-   vg_assert(text);
 
    /* Ok.  Generate the plain text version into TEXT. */
    VG_(xaprintf)(text, "{\n");
@@ -412,7 +411,7 @@ static void gen_suppression(Error* err)
 
    // Print stack trace elements
    UInt n_ips = VG_(get_ExeContext_n_ips)(ec);
-   tl_assert(n_ips > 0);
+   vg_assert(n_ips > 0);
    if (n_ips > VG_MAX_SUPP_CALLERS)
       n_ips = VG_MAX_SUPP_CALLERS;
    VG_(apply_StackTrace)(printSuppForIp_nonXML,
@@ -656,7 +655,7 @@ void construct_error ( Error* err, ThreadId tid, ErrorKind ekind, Addr a,
    /* DO NOT MAKE unique_counter NON-STATIC */
    static UInt unique_counter = 0;
 
-   tl_assert(tid < VG_N_THREADS);
+   vg_assert(tid < VG_N_THREADS);
 
    /* Core-only parts */
    err->unique   = unique_counter++;
@@ -832,7 +831,7 @@ void VG_(maybe_record_error) ( ThreadId tid,
       DedupPoolAlloc for these strings will avoid duplicating
       such string in each error using it. */
    if (NULL != p->string) {
-      p->string = VG_(arena_strdup)(VG_AR_CORE, "errormgr.mre.2", p->string);
+      p->string = VG_(strdup)("errormgr.mre.2", p->string);
    }
 
    /* copy block pointed to by 'extra', if there is one */
@@ -1017,7 +1016,7 @@ void VG_(show_all_errors) (  Int verbosity, Bool xml )
          }
       }
       // XXX: this isn't right.  See bug 203651.
-      if (p_min == NULL) continue; //VG_(tool_panic)("show_all_errors()");
+      if (p_min == NULL) continue; //VG_(core_panic)("show_all_errors()");
 
       VG_(umsg)("\n");
       VG_(umsg)("%d errors in context %d of %d:\n",
@@ -1136,7 +1135,7 @@ static Bool get_nbnc_line ( Int fd, HChar** bufpp, SizeT* nBufp, Int* lineno )
       while (True) {
          n = get_char(fd, &ch);
          if (n == 1 && !VG_(isspace)(ch)) break;
-         if (n == 1 && ch == '\n' && lineno)
+         if (n == 1 && ch == '\n')
             (*lineno)++;
          if (n <= 0) return True;
       }
@@ -1147,7 +1146,7 @@ static Bool get_nbnc_line ( Int fd, HChar** bufpp, SizeT* nBufp, Int* lineno )
       while (True) {
          n = get_char(fd, &ch);
          if (n <= 0) return False; /* the next call will return True */
-         if (ch == '\n' && lineno)
+         if (ch == '\n')
             (*lineno)++;
          if (ch == '\n') break;
          if (i > 0 && i == nBuf-1) {
@@ -1215,15 +1214,13 @@ static Bool is_simple_str (const HChar *s)
 static Bool setLocationTy ( SuppLoc* p, HChar *buf )
 {
    if (VG_(strncmp)(buf, "fun:", 4) == 0) {
-      p->name = VG_(arena_strdup)(VG_AR_CORE,
-                                  "errormgr.sLTy.1", buf+4);
+      p->name = VG_(strdup)("errormgr.sLTy.1", buf+4);
       p->name_is_simple_str = is_simple_str (p->name);
       p->ty = FunName;
       return True;
    }
    if (VG_(strncmp)(buf, "obj:", 4) == 0) {
-      p->name = VG_(arena_strdup)(VG_AR_CORE,
-                                  "errormgr.sLTy.2", buf+4);
+      p->name = VG_(strdup)("errormgr.sLTy.2", buf+4);
       p->name_is_simple_str = is_simple_str (p->name);
       p->ty = ObjName;
       return True;
@@ -1297,8 +1294,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
    while (True) {
       /* Assign and initialise the two suppression halves (core and tool) */
       Supp* supp;
-      supp        = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.1",
-                                      sizeof(Supp));
+      supp        = VG_(malloc)("errormgr.losf.1", sizeof(Supp));
       supp->count = 0;
 
       // Initialise temporary reading-in buffer.
@@ -1312,7 +1308,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       eof = get_nbnc_line ( fd, &buf, &nBuf, &lineno );
       if (eof) {
-         VG_(arena_free)(VG_AR_CORE, supp);
+         VG_(free)(supp);
          break;
       }
 
@@ -1322,7 +1318,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       if (eof || VG_STREQ(buf, "}")) BOMB("unexpected '}'");
 
-      supp->sname = VG_(arena_strdup)(VG_AR_CORE, "errormgr.losf.2", buf);
+      supp->sname = VG_(strdup)("errormgr.losf.2", buf);
       supp->clo_suppressions_i = clo_suppressions_i;
       supp->sname_lineno = lineno;
 
@@ -1369,8 +1365,8 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
             if (VG_STREQ(buf, "}"))
                break;
          }
-         VG_(arena_free)(VG_AR_CORE, supp->sname);
-         VG_(arena_free)(VG_AR_CORE, supp);
+         VG_(free)(supp->sname);
+         VG_(free)(supp);
          continue;
       }
 
@@ -1439,8 +1435,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       // Copy tmp_callers[] into supp->callers[]
       supp->n_callers = i;
-      supp->callers = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.4",
-                                        i*sizeof(SuppLoc));
+      supp->callers = VG_(malloc)("errormgr.losf.4", i * sizeof(SuppLoc));
       for (i = 0; i < supp->n_callers; i++) {
          supp->callers[i] = tmp_callers[i];
       }
@@ -1900,7 +1895,7 @@ Bool supp_matches_error(Supp* su, Error* err)
                "\nUnhandled suppression type: %u.  VG_(needs).tool_errors\n"
                "probably needs to be set.\n",
                err->ekind);
-            VG_(tool_panic)("unhandled suppression type");
+            VG_(core_panic)("unhandled suppression type");
          }
    }
 }

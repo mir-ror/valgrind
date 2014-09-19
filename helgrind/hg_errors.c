@@ -76,7 +76,6 @@ static HChar* string_table_strdup ( const HChar* str ) {
    if (!string_table) {
       string_table = VG_(newFM)( HG_(zalloc), "hg.sts.1",
                                  HG_(free), string_table_cmp );
-      tl_assert(string_table);
    }
    if (VG_(lookupFM)( string_table,
                       NULL, (UWord*)&copy, (UWord)str )) {
@@ -85,7 +84,6 @@ static HChar* string_table_strdup ( const HChar* str ) {
       return copy;
    } else {
       copy = HG_(strdup)("hg.sts.2", str);
-      tl_assert(copy);
       VG_(addToFM)( string_table, (UWord)copy, (UWord)copy );
       return copy;
    }
@@ -165,7 +163,6 @@ static Lock* mk_LockP_from_LockN ( Lock* lkn,
    if (!map_LockN_to_P) {
       map_LockN_to_P = VG_(newFM)( HG_(zalloc), "hg.mLPfLN.1",
                                    HG_(free), lock_unique_cmp );
-      tl_assert(map_LockN_to_P);
    }
    if (!VG_(lookupFM)( map_LockN_to_P, NULL, (UWord*)&lkp, (UWord)lkn)) {
       lkp = HG_(zalloc)( "hg.mLPfLN.2", sizeof(Lock) );
@@ -202,7 +199,6 @@ Lock** enumerate_WordSet_into_LockP_vector( WordSetU* univ_lsets,
    UWord  nLocks = HG_(cardinalityWS)(univ_lsets, lockset);
    Lock** lockPs = HG_(zalloc)( "hg.eWSiLPa",
                                 (nLocks+1) * sizeof(Lock*) );
-   tl_assert(lockPs);
    tl_assert(lockPs[nLocks] == NULL); /* pre-NULL terminated */
    UWord* lockNs  = NULL;
    UWord  nLockNs = 0;
@@ -475,6 +471,8 @@ void HG_(record_error_Race) ( Thread* thr,
      if (sect == Vg_SectGOTPLT) return;
      /* SectPLT is required on ppc32/64-linux */
      if (sect == Vg_SectPLT) return;
+     /* SectGOT is required on arm-linux */
+     if (sect == Vg_SectGOT) return;
    }
 #  endif
 

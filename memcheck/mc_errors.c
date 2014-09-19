@@ -1357,22 +1357,29 @@ Bool MC_(read_extra_suppression_info) ( Int fd, HChar** bufpp,
       }
    } else if (VG_(get_supp_kind)(su) == FishyValueSupp) {
       MC_FishyValueExtra *extra;
-      HChar *p;
+      HChar *p, *function_name, *argument_name = NULL;
 
       eof = VG_(get_line) ( fd, bufpp, nBufp, lineno );
       if (eof) return True;
 
-      extra = VG_(malloc)("mc.resi.3", sizeof *extra);
-      extra->function_name = VG_(strdup)("mv.resi.4", *bufpp);
-
       // The suppression string is: function_name(argument_name)
-      p = VG_(strchr)(extra->function_name, '(');
-      if (p == NULL) return False;  // malformed suppression string
-      *p++ = '\0';
-      extra->argument_name = p;
-      p = VG_(strchr)(p, ')');
-      if (p == NULL) return False;  // malformed suppression string
-      *p = '\0';
+      function_name = VG_(strdup)("mv.resi.4", *bufpp);
+      p = VG_(strchr)(function_name, '(');
+      if (p != NULL) {
+         *p++ = '\0';
+         argument_name = p;
+         p = VG_(strchr)(p, ')');
+         if (p != NULL)
+            *p = '\0';
+      }
+      if (p == NULL) {    // malformed suppression string
+         VG_(free)(function_name);
+         return False;
+      }
+
+      extra = VG_(malloc)("mc.resi.3", sizeof *extra);
+      extra->function_name = function_name;
+      extra->argument_name = argument_name;
 
       VG_(set_supp_extra)(su, extra);
    }
@@ -1554,7 +1561,7 @@ void MC_(update_extra_suppression_use) ( Error* err, Supp* su)
       MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
       MC_Error* extra = VG_(get_error_extra)(err);
 
-      tl_assert (lse->leak_search_gen = MC_(leak_search_gen));
+      tl_assert (lse->leak_search_gen == MC_(leak_search_gen));
       lse->blocks_suppressed += extra->Err.Leak.lr->num_blocks;
       lse->bytes_suppressed 
          += extra->Err.Leak.lr->szB + extra->Err.Leak.lr->indirect_szB;

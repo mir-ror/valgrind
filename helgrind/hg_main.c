@@ -595,13 +595,11 @@ static void initialise_data_structures ( Thr* hbthr_root )
 
    tl_assert(map_threads == NULL);
    map_threads = HG_(zalloc)( "hg.ids.1", VG_N_THREADS * sizeof(Thread*) );
-   tl_assert(map_threads != NULL);
 
    tl_assert(sizeof(Addr) == sizeof(UWord));
    tl_assert(map_locks == NULL);
    map_locks = VG_(newFM)( HG_(zalloc), "hg.ids.2", HG_(free), 
                            NULL/*unboxed Word cmp*/);
-   tl_assert(map_locks != NULL);
 
    tl_assert(univ_lsets == NULL);
    univ_lsets = HG_(newWordSetU)( HG_(zalloc), "hg.ids.4", HG_(free),
@@ -1568,7 +1566,7 @@ void evh__pre_thread_ll_create ( ThreadId parent, ThreadId child )
       /* Record where the parent is so we can later refer to this in
          error messages.
 
-         On amd64-linux, this entails a nasty glibc-2.5 specific hack.
+         On x86/amd64-linux, this entails a nasty glibc specific hack.
          The stack snapshot is taken immediately after the parent has
          returned from its sys_clone call.  Unfortunately there is no
          unwind info for the insn following "syscall" - reading the
@@ -1577,8 +1575,10 @@ void evh__pre_thread_ll_create ( ThreadId parent, ThreadId child )
          is unwind info.  Sigh.
       */
       { Word first_ip_delta = 0;
-#       if defined(VGP_amd64_linux)
+#       if defined(VGP_amd64_linux) || defined(VGP_x86_linux)
         first_ip_delta = -3;
+#       elif defined(VGP_arm64_linux) || defined(VGP_arm_linux)
+        first_ip_delta = -1;
 #       endif
         thr_c->created_at = VG_(record_ExeContext)(parent, first_ip_delta);
       }
@@ -1792,12 +1792,8 @@ void evh__new_mem_heap ( Addr a, SizeT len, Bool is_inited ) {
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__new_mem_heap(%p, %lu, inited=%d)\n", 
                   (void*)a, len, (Int)is_inited );
-   // FIXME: this is kinda stupid
-   if (is_inited) {
-      shadow_mem_make_New(get_current_Thread(), a, len);
-   } else {
-      shadow_mem_make_New(get_current_Thread(), a, len);
-   }
+   // We ignore the initialisation state (is_inited); that's ok.
+   shadow_mem_make_New(get_current_Thread(), a, len);
    if (len >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__pre_mem_read-post");
 }
@@ -2173,7 +2169,6 @@ static void map_cond_to_CVInfo_INIT ( void ) {
    if (UNLIKELY(map_cond_to_CVInfo == NULL)) {
       map_cond_to_CVInfo = VG_(newFM)( HG_(zalloc),
                                        "hg.mctCI.1", HG_(free), NULL );
-      tl_assert(map_cond_to_CVInfo != NULL);
    }
 }
 
@@ -2656,7 +2651,6 @@ static void map_sem_to_SO_stack_INIT ( void ) {
    if (map_sem_to_SO_stack == NULL) {
       map_sem_to_SO_stack = VG_(newFM)( HG_(zalloc), "hg.mstSs.1",
                                         HG_(free), NULL );
-      tl_assert(map_sem_to_SO_stack != NULL);
    }
 }
 
@@ -2855,7 +2849,6 @@ typedef
 
 static Bar* new_Bar ( void ) {
    Bar* bar = HG_(zalloc)( "hg.nB.1 (new_Bar)", sizeof(Bar) );
-   tl_assert(bar);
    /* all fields are zero */
    tl_assert(bar->initted == False);
    return bar;
@@ -2877,7 +2870,6 @@ static void map_barrier_to_Bar_INIT ( void ) {
    if (UNLIKELY(map_barrier_to_Bar == NULL)) {
       map_barrier_to_Bar = VG_(newFM)( HG_(zalloc),
                                        "hg.mbtBI.1", HG_(free), NULL );
-      tl_assert(map_barrier_to_Bar != NULL);
    }
 }
 
@@ -2954,7 +2946,6 @@ static void evh__HG_PTHREAD_BARRIER_INIT_PRE ( ThreadId tid,
                                  sizeof(Thread*) );
    }
 
-   tl_assert(bar->waiting);
    tl_assert(VG_(sizeXA)(bar->waiting) == 0);
    bar->initted   = True;
    bar->resizable = resizable == 1 ? True : False;
@@ -3209,7 +3200,6 @@ static void map_usertag_to_SO_INIT ( void ) {
    if (UNLIKELY(map_usertag_to_SO == NULL)) {
       map_usertag_to_SO = VG_(newFM)( HG_(zalloc),
                                       "hg.mutS.1", HG_(free), NULL );
-      tl_assert(map_usertag_to_SO != NULL);
    }
 }
 
@@ -3389,8 +3379,6 @@ static void laog__init ( void )
 
    laog_exposition = VG_(newFM)( HG_(zalloc), "hg.laog__init.2", HG_(free), 
                                  cmp_LAOGLinkExposition );
-   tl_assert(laog);
-   tl_assert(laog_exposition);
 }
 
 static void laog__show ( const HChar* who ) {
@@ -4477,6 +4465,8 @@ static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
    if (VG_STREQ(soname, VG_U_LD64_SO_1))            return True;
    if (VG_STREQ(soname, VG_U_LD64_SO_2))            return True;
    if (VG_STREQ(soname, VG_U_LD_SO_1))              return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_AARCH64_SO_1)) return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_ARMHF_SO_3))  return True;
 #  elif defined(VGO_darwin)
    if (VG_STREQ(soname, VG_U_DYLD)) return True;
 #  else
@@ -4746,7 +4736,6 @@ static void map_pthread_t_to_Thread_INIT ( void ) {
    if (UNLIKELY(map_pthread_t_to_Thread == NULL)) {
       map_pthread_t_to_Thread = VG_(newFM)( HG_(zalloc), "hg.mpttT.1", 
                                             HG_(free), NULL );
-      tl_assert(map_pthread_t_to_Thread != NULL);
    }
 }
 

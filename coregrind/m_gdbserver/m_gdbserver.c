@@ -169,13 +169,11 @@ static int gdbserver_exited = 0;
 /* alloc and free functions for xarray and similar. */
 static void* gs_alloc (const HChar* cc, SizeT sz)
 {
-   void* res = VG_(arena_malloc)(VG_AR_CORE, cc, sz);
-   vg_assert (res);
-   return res;
+   return VG_(malloc)(cc, sz);
 }
 static void gs_free (void* ptr)
 {
-   VG_(arena_free)(VG_AR_CORE, ptr);
+   VG_(free)(ptr);
 }
 
 typedef
@@ -221,7 +219,7 @@ static void add_gs_address (Addr addr, GS_Kind kind, const HChar* from)
 {
    GS_Address *p;
 
-   p = VG_(arena_malloc)(VG_AR_CORE, from, sizeof(GS_Address));
+   p = VG_(malloc)(from, sizeof(GS_Address));
    p->addr = HT_addr (addr);
    p->kind = kind;
    VG_(HT_add_node)(gs_addresses, p);
@@ -240,7 +238,7 @@ static void remove_gs_address (GS_Address* g, const HChar* from)
    // See add_gs_address for the explanation for condition and the range 2 below.
    if (VG_(clo_vgdb) != Vg_VgdbFull)
       VG_(discard_translations) (g->addr, 2, from);
-   VG_(arena_free) (VG_AR_CORE, g);
+   VG_(free) (g);
 }
 
 const HChar* VG_(ppPointKind) (PointKind kind)
@@ -382,8 +380,7 @@ Bool VG_(gdbserver_point) (PointKind kind, Bool insert,
    g = lookup_gs_watch (addr, len, kind, &g_ix);
    if (insert) {
       if (g == NULL) {
-         g = VG_(arena_malloc)(VG_AR_CORE, "gdbserver_point watchpoint",
-                               sizeof(GS_Watch));
+         g = VG_(malloc)("gdbserver_point watchpoint", sizeof(GS_Watch));
          g->addr = addr;
          g->len  = len;
          g->kind = kind;
@@ -396,7 +393,7 @@ Bool VG_(gdbserver_point) (PointKind kind, Bool insert,
    } else {
       if (g != NULL) {
          VG_(removeIndexXA) (gs_watches, g_ix);
-         VG_(arena_free) (VG_AR_CORE, g);
+         VG_(free) (g);
       } else {
          dlog(1, 
               "VG_(gdbserver_point) addr %p len %d kind %s already deleted?\n",
@@ -940,6 +937,31 @@ Bool VG_(gdbserver_activity) (ThreadId tid)
    }
    busy--;
    return ret;
+}
+
+
+void VG_(gdbserver_report_fatal_signal) (Int vki_sigNo, ThreadId tid)
+{
+   dlog(1, "VG core calling VG_(gdbserver_report_fatal_signal) "
+        "vki_nr %d %s gdb_nr %d %s tid %d\n", 
+        vki_sigNo, VG_(signame)(vki_sigNo),
+        target_signal_from_host (vki_sigNo),
+        target_signal_to_name(target_signal_from_host (vki_sigNo)), 
+        tid);
+
+   if (remote_connected()) {
+      dlog(1, "already connected, assuming already reported\n");
+      return;
+   }
+
+   VG_(umsg)("(action on fatal signal) vgdb me ... \n");
+
+   /* indicate to gdbserver that there is a signal */
+   gdbserver_signal_encountered (vki_sigNo);
+
+   /* let gdbserver do some work, e.g. show the signal to the user */
+   call_gdbserver (tid, signal_reason);
+   
 }
 
 Bool VG_(gdbserver_report_signal) (Int vki_sigNo, ThreadId tid)

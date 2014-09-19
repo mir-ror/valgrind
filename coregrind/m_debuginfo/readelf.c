@@ -50,7 +50,6 @@
 #include "priv_readelf.h"          /* self */
 #include "priv_readdwarf.h"        /* 'cos ELF contains DWARF */
 #include "priv_readdwarf3.h"
-#include "priv_readstabs.h"        /* and stabs, if we're unlucky */
 #include "priv_readexidx.h"
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
@@ -214,7 +213,7 @@ void show_raw_elf_symbol ( DiImage* strtab_img,
    To support the ppc64be-linux pre-"dotless" ABI (prior to gcc 4.0.0),
    if the symbol is seen to be outside the .opd section and its name
    starts with a dot, an .opd deference is not attempted, and no TOC
-   pointer is calculated, but the the leading dot is removed from the
+   pointer is calculated, but the leading dot is removed from the
    name.
 
    As a result, on ppc64be-linux, the caller of this function may have
@@ -864,7 +863,7 @@ void read_elf_symtab__ppc64be_linux(
         struct _DebugInfo* di, const HChar* tab_name,
         DiSlice*   escn_symtab,
         DiSlice*   escn_strtab,
-        DiSlice*   escn_opd, /* ppc64-linux only */ 
+        DiSlice*   escn_opd, /* ppc64be-linux only */ 
         Bool       symtab_in_debug
      )
 {
@@ -891,7 +890,6 @@ void read_elf_symtab__ppc64be_linux(
                                (OSetCmp_t)cmp_TempSymKey, 
                                ML_(dinfo_zalloc), "di.respl.1",
                                ML_(dinfo_free) );
-   vg_assert(oset);
 
    /* Perhaps should start at i = 1; ELF docs suggest that entry
       0 always denotes 'unknown symbol'. */
@@ -988,7 +986,6 @@ void read_elf_symtab__ppc64be_linux(
 
             /* A new (name,addr) key.  Add and continue. */
             elem = VG_(OSetGen_AllocNode)(oset, sizeof(TempSym));
-            vg_assert(elem);
             elem->key      = key;
             elem->tocptr   = GET_TOCPTR_AVMA(sym_avmas_really);
             elem->size     = sym_size;
@@ -1180,7 +1177,12 @@ DiImage* open_debug_file( const HChar* name, const HChar* buildid, UInt crc,
          VG_(message)(Vg_DebugMsg, "  Considering %s ..\n", name);
    }
 
-   if (buildid) {
+   /* We will always check the crc if we have one (altfiles don't have one)
+      for now because we might be opening the main file again by any other
+      name, and that obviously also has the same buildid. More efficient
+      would be an fstat bases check or a check that the file actually
+      contains .debug* sections. */
+   if (buildid && crc == 0) {
       HChar* debug_buildid = find_buildid(dimg, rel_ok, True);
       if (debug_buildid == NULL || VG_(strcmp)(buildid, debug_buildid) != 0) {
          ML_(img_done)(dimg);
@@ -1244,7 +1246,7 @@ DiImage* find_debug_file( struct _DebugInfo* di,
       }
    }
 
-   if (dimg == NULL && debugname != NULL && !rel_ok) {
+   if (dimg == NULL && debugname != NULL) {
       HChar *objdir = ML_(dinfo_strdup)("di.fdf.2", objpath);
       HChar *objdirptr;
 
@@ -1258,21 +1260,21 @@ DiImage* find_debug_file( struct _DebugInfo* di,
                      + (serverpath ? VG_(strlen)(serverpath) : 0));
 
       VG_(sprintf)(debugpath, "%s/%s", objdir, debugname);
-      dimg = open_debug_file(debugpath, NULL, crc, rel_ok, NULL);
+      dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
       if (dimg != NULL) goto dimg_ok;
 
       VG_(sprintf)(debugpath, "%s/.debug/%s", objdir, debugname);
-      dimg = open_debug_file(debugpath, NULL, crc, rel_ok, NULL);
+      dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
       if (dimg != NULL) goto dimg_ok;
       
       VG_(sprintf)(debugpath, "/usr/lib/debug%s/%s", objdir, debugname);
-      dimg = open_debug_file(debugpath, NULL, crc, rel_ok, NULL);
+      dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
       if (dimg != NULL) goto dimg_ok;
 
       if (extrapath) {
          VG_(sprintf)(debugpath, "%s%s/%s", extrapath,
                                             objdir, debugname);
-         dimg = open_debug_file(debugpath, NULL, crc, rel_ok, NULL);
+         dimg = open_debug_file(debugpath, buildid, crc, rel_ok, NULL);
          if (dimg != NULL) goto dimg_ok;
       }
 
@@ -1284,7 +1286,7 @@ DiImage* find_debug_file( struct _DebugInfo* di,
             basename = VG_(strrchr)(basename, '/') + 1;
          }
          VG_(sprintf)(debugpath, "%s on %s", basename, serverpath);
-         dimg = open_debug_file(basename, NULL, crc, rel_ok, serverpath);
+         dimg = open_debug_file(basename, buildid, crc, rel_ok, serverpath);
          if (dimg) goto dimg_ok;
       }
 
@@ -1297,6 +1299,10 @@ DiImage* find_debug_file( struct _DebugInfo* di,
       vg_assert(debugpath);
       TRACE_SYMTAB("\n");
       TRACE_SYMTAB("------ Found a debuginfo file: %s\n", debugpath);
+
+      /* Only set once, we might be called again for opening the altfile. */
+      if (di->fsm.dbgname == NULL)
+         di->fsm.dbgname = ML_(dinfo_strdup)("di.fdf.4", debugpath);
    }
 
    if (debugpath)
@@ -2313,8 +2319,6 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       DiSlice dynsym_escn         = DiSlice_INVALID; // .dynsym
       DiSlice debuglink_escn      = DiSlice_INVALID; // .gnu_debuglink
       DiSlice debugaltlink_escn   = DiSlice_INVALID; // .gnu_debugaltlink
-      DiSlice stab_escn           = DiSlice_INVALID; // .stab         (stabs) 
-      DiSlice stabstr_escn        = DiSlice_INVALID; // .stabstr      (stabs) 
       DiSlice debug_line_escn     = DiSlice_INVALID; // .debug_line   (dwarf2)
       DiSlice debug_info_escn     = DiSlice_INVALID; // .debug_info   (dwarf2)
       DiSlice debug_types_escn    = DiSlice_INVALID; // .debug_types  (dwarf4)
@@ -2397,9 +2401,6 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
 
          FIND(".gnu_debuglink",     debuglink_escn)
          FIND(".gnu_debugaltlink",  debugaltlink_escn)
-
-         FIND(".stab",              stab_escn)
-         FIND(".stabstr",           stabstr_escn)
 
          FIND(".debug_line",        debug_line_escn)
          FIND(".debug_info",        debug_info_escn)
@@ -2523,7 +2524,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          Addr     rw_dsvma_limit = 0;
          PtrdiffT rw_dbias = 0;
 
-         Bool need_symtab, need_stabs, need_dwarf2, need_dwarf1;
+         Bool need_symtab, need_dwarf2, need_dwarf1;
 
          if (phdr_dnent == 0
              || !ML_(img_valid)(dimg, phdr_dioff,
@@ -2593,7 +2594,6 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          }
 
          need_symtab = (symtab_escn.img == NULL);
-         need_stabs  = (stab_escn.img == NULL);
          need_dwarf2 = (debug_info_escn.img == NULL);
          need_dwarf1 = (dwarf1d_escn.img == NULL);
 
@@ -2686,8 +2686,6 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             /* NEEDED?        NAME             ElfSec */
             FIND(need_symtab, ".symtab",       symtab_escn)
             FIND(need_symtab, ".strtab",       strtab_escn)
-            FIND(need_stabs,  ".stab",         stab_escn)
-            FIND(need_stabs,  ".stabstr",      stabstr_escn)
             FIND(need_dwarf2, ".debug_line",   debug_line_escn)
             FIND(need_dwarf2, ".debug_info",   debug_info_escn)
             FIND(need_dwarf2, ".debug_types",  debug_types_escn)
@@ -2714,6 +2712,9 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       vg_assert(aimg == NULL);
 
       if (debugaltlink_escn.img != NULL) {
+         HChar* altfile_str_m
+             = ML_(img_strdup)(debugaltlink_escn.img,
+                               "di.fbi.3", debugaltlink_escn.ioff);
          UInt buildid_offset = ML_(img_strlen)(debugaltlink_escn.img,
                                                debugaltlink_escn.ioff)+1;
 
@@ -2724,6 +2725,9 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                                 (debugaltlink_escn.szB - buildid_offset)
                                 * 2 + 1);
 
+         /* The altfile might be relative to the debug file or main file. */
+         HChar *dbgname = di->fsm.dbgname ? di->fsm.dbgname : di->fsm.filename;
+
          for (j = 0; j < debugaltlink_escn.szB - buildid_offset; j++)
             VG_(sprintf)(
                altbuildid + 2 * j, "%02x",
@@ -2732,9 +2736,11 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                                         + buildid_offset + j));
 
          /* See if we can find a matching debug file */
-         aimg = find_debug_file( di, di->fsm.filename, altbuildid,
-                                 NULL, 0, True );
+         aimg = find_debug_file( di, dbgname, altbuildid,
+                                 altfile_str_m, 0, True );
 
+         if (altfile_str_m)
+            ML_(dinfo_free)(altfile_str_m);
          ML_(dinfo_free)(altbuildid);
       }
 
@@ -2869,27 +2875,6 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                                           0/*assume zero avma*/,
                                           False/*!is_ehframe*/ );
       }
-
-      /* Read the stabs and/or dwarf2 debug information, if any.  It
-         appears reading stabs stuff on amd64-linux doesn't work, so
-         we ignore it.  On s390x stabs also doesnt work and we always
-         have the dwarf info in the eh_frame.  We also segfault on
-         ppc64-linux when reading stabs, so skip that.  ppc32-linux
-         seems OK though.  Also skip on Android. */
-#     if !defined(VGP_amd64_linux) \
-         && !defined(VGP_s390x_linux) \
-         && !defined(VGP_ppc64be_linux) \
-         && !defined(VGP_ppc64le_linux) \
-         && !defined(VGPV_arm_linux_android) \
-         && !defined(VGPV_x86_linux_android) \
-         && !defined(VGP_mips64_linux)
-      // JRS 31 July 2014: stabs reading is currently broken and
-      // therefore deactivated.
-      //if (stab_img && stabstr_img) {
-      //   ML_(read_debuginfo_stabs) ( di, stab_img, stab_sz, 
-      //                                   stabstr_img, stabstr_sz );
-      //}
-#     endif
 
       /* TOPLEVEL */
       /* jrs 2006-01-01: icc-8.1 has been observed to generate

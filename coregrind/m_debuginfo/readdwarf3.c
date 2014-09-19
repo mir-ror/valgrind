@@ -632,7 +632,6 @@ static GExpr* make_singleton_GX ( DiCursor block, ULong nbytes )
 
    gx = ML_(dinfo_zalloc)( "di.readdwarf3.msGX.1", 
                            sizeof(GExpr) + bytesReqd );
-   vg_assert(gx);
 
    p = pstart = &gx->payload[0];
 
@@ -747,7 +746,6 @@ static GExpr* make_general_GX ( CUConst* cc,
    vg_assert(nbytes >= 1);
 
    gx = ML_(dinfo_zalloc)( "di.readdwarf3.mgGX.2", sizeof(GExpr) + nbytes );
-   vg_assert(gx);
    VG_(memcpy)( &gx->payload[0], (UChar*)VG_(indexXA)(xa,0), nbytes );
    vg_assert( &gx->payload[nbytes] 
               == ((UChar*)gx) + sizeof(GExpr) + nbytes );
@@ -779,7 +777,7 @@ typedef
 static Word cmp__XArrays_of_AddrRange ( XArray* rngs1, XArray* rngs2 )
 {
    Word n1, n2, i;
-   tl_assert(rngs1 && rngs2);
+   vg_assert(rngs1 && rngs2);
    n1 = VG_(sizeXA)( rngs1 );  
    n2 = VG_(sizeXA)( rngs2 );
    if (n1 < n2) return -1;
@@ -1391,11 +1389,13 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
          TRACE_D3("0x%lx", (UWord)cts->u.val);
          if (0) VG_(printf)("DW_FORM_GNU_ref_alt 0x%lx\n", (UWord)cts->u.val);
          if (/* the following is surely impossible, but ... */
-             !ML_(sli_is_valid)(cc->escn_debug_info_alt)
-             || cts->u.val >= (ULong)cc->escn_debug_info_alt.szB) {
+             !ML_(sli_is_valid)(cc->escn_debug_info_alt))
+            cc->barf("get_Form_contents: DW_FORM_GNU_ref_addr used, "
+                     "but no alternate .debug_info");
+         else if (cts->u.val >= (ULong)cc->escn_debug_info_alt.szB) {
             /* Hmm.  Offset is nonsensical for this object's .debug_info
                section.  Be safe and reject it. */
-            cc->barf("get_Form_contents: DW_FORM_ref_addr points "
+            cc->barf("get_Form_contents: DW_FORM_GNU_ref_addr points "
                      "outside alternate .debug_info");
          }
          break;
@@ -1403,8 +1403,10 @@ void get_Form_contents ( /*OUT*/FormContents* cts,
       case DW_FORM_GNU_strp_alt: {
          /* this is an offset into alternate .debug_str */
          SizeT uw = (UWord)get_Dwarfish_UWord( c, cc->is_dw64 );
-         if (!ML_(sli_is_valid)(cc->escn_debug_str_alt)
-             || uw >= cc->escn_debug_str_alt.szB)
+         if (!ML_(sli_is_valid)(cc->escn_debug_str_alt))
+            cc->barf("get_Form_contents: DW_FORM_GNU_strp_alt used, "
+                     "but no alternate .debug_str");
+         else if (uw >= cc->escn_debug_str_alt.szB)
             cc->barf("get_Form_contents: DW_FORM_GNU_strp_alt "
                      "points outside alternate .debug_str");
          /* FIXME: check the entire string lies inside debug_str,
@@ -2386,8 +2388,8 @@ static void parse_var_DIE (
             UWord keyW, valW;
             if (VG_(lookupFM)( rangestree, &keyW, &valW, (UWord)xa )) {
                XArray* old = (XArray*)keyW;
-               tl_assert(valW == 0);
-               tl_assert(old != xa);
+               vg_assert(valW == 0);
+               vg_assert(old != xa);
                tv->rngMany = old;
             } else {
                XArray* cloned = VG_(cloneXA)( "di.readdwarf3.pvD.2", xa );
@@ -2507,7 +2509,28 @@ typedef
    D3InlParser;
 
 /* Return the function name corresponding to absori.
-   The return value is a (permanent) string in DebugInfo's .strchunks. */
+
+   absori is a 'cooked' reference to a DIE, i.e. absori can be either
+   in cc->escn_debug_info or in cc->escn_debug_info_alt.
+   get_inlFnName will uncook absori. 
+
+   The returned value is a (permanent) string in DebugInfo's .strchunks.
+
+   LIMITATION: absori must point in the CU of cc. If absori points
+   in another CU, returns "UnknownInlinedFun".
+
+   Here are the problems to retrieve the fun name if absori is in
+   another CU:  the DIE reading code cannot properly extract data from
+   another CU, as the abbv code retrieved in the other CU cannot be
+   translated in an abbreviation. Reading data from the alternate debug
+   info also gives problems as the string reference is also in the alternate
+   file, but when reading the alt DIE, the string form is a 'local' string,
+   but cannot be read in the current CU, but must be read in the alt CU.
+   See bug 338803 comment#3 and attachment for a failed attempt to handle
+   these problems (failed because with the patch, only one alt abbrev hash
+   table is kept, while we must handle all abbreviations in all CUs
+   referenced by an absori (being a reference to an alt CU, or a previous
+   or following CU). */
 static HChar* get_inlFnName (Int absori, CUConst* cc, Bool td3)
 {
    Cursor c;
@@ -2515,14 +2538,37 @@ static HChar* get_inlFnName (Int absori, CUConst* cc, Bool td3)
    ULong  atag, abbv_code;
    UInt   has_children;
    UWord  posn;
+   Bool type_flag, alt_flag;
    HChar *ret = NULL;
    FormContents cts;
    UInt nf_i;
 
-   init_Cursor (&c, cc->escn_debug_info, absori, cc->barf, 
+   posn = uncook_die( cc, absori, &type_flag, &alt_flag);
+   if (type_flag)
+      cc->barf("get_inlFnName: uncooked absori in type debug info");
+
+   /* LIMITATION: check we are in the same CU.
+      If not, return unknown inlined function name. */
+   /* if crossing between alt debug info<>normal info
+          or posn not in the cu range,
+      then it is in another CU. */
+   if (alt_flag != cc->is_alt_info
+       || posn < cc->cu_start_offset
+       || posn >= cc->cu_start_offset + cc->unit_length) {
+      static Bool reported = False;
+      if (!reported && VG_(clo_verbosity) > 1) {
+         VG_(message)(Vg_DebugMsg,
+                      "Warning: cross-CU LIMITATION: some inlined fn names\n"
+                      "might be shown as UnknownInlinedFun\n");
+         reported = True;
+      }
+      TRACE_D3(" <get_inlFnName><%lx>: cross-CU LIMITATION", posn);
+      return ML_(addStr)(cc->di, "UnknownInlinedFun", -1);
+   }
+
+   init_Cursor (&c, cc->escn_debug_info, posn, cc->barf, 
                 "Overrun get_inlFnName absori");
 
-   posn      = cook_die( cc, get_position_of_Cursor( &c ) );
    abbv_code = get_ULEB128( &c );
    abbv      = get_abbv ( cc, abbv_code);
    atag      = abbv->atag;
@@ -2558,12 +2604,19 @@ static HChar* get_inlFnName (Int absori, CUConst* cc, Bool td3)
                  DW_AT_specification. */
       }
       if (attr == DW_AT_specification) {
+         UWord cdie;
+
          if (cts.szB == 0)
             cc->barf("get_inlFnName: AT specification missing");
+
+         /* The recursive call to get_inlFnName will uncook its arg.
+            So, we need to cook it here, so as to reference the
+            correct section (e.g. the alt info). */
+         cdie = cook_die_using_form(cc, (UWord)cts.u.val, form);
+
          /* hoping that there is no loop */
-         ret = get_inlFnName (cts.u.val, cc, td3);
-         /* 
-            Unclear if having both DW_AT_specification and DW_AT_name is
+         ret = get_inlFnName (cdie, cc, td3);
+         /* Unclear if having both DW_AT_specification and DW_AT_name is
             possible but in any case, we do not break here. 
             If we find later on a DW_AT_name, it will override the name found
             in the DW_AT_specification.*/
@@ -2671,7 +2724,8 @@ static Bool parse_inl_DIE (
          }  
 
          if (attr == DW_AT_abstract_origin  && cts.szB > 0) {
-            inlinedfn_abstract_origin = cts.u.val;
+            inlinedfn_abstract_origin
+               = cook_die_using_form (cc, (UWord)cts.u.val, form);
          }
 
          if (attr == DW_AT_low_pc && cts.szB > 0) {
@@ -3395,7 +3449,6 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          fieldE.Te.Field.name
             = ML_(dinfo_strdup)( "di.readdwarf3.ptD.member.3",
                                  "<anon_field>" );
-      vg_assert(fieldE.Te.Field.name);
       if (fieldE.Te.Field.typeR == D3_INVALID_CUOFF)
          goto_bad_DIE;
       if (fieldE.Te.Field.nLoc) {
@@ -4636,7 +4689,6 @@ void new_dwarf3_reader_wrk (
                = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.5var",
                              ML_(dinfo_free),
                              sizeof(UInt) );
-            vg_assert(varparser.fndn_ix_Table);
          }
 
          if (VG_(clo_read_inline_info)) {
@@ -4646,7 +4698,6 @@ void new_dwarf3_reader_wrk (
                = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.5inl",
                              ML_(dinfo_free),
                              sizeof(UInt) );
-            vg_assert(inlparser.fndn_ix_Table);
          }
 
          /* Now read the one-and-only top-level DIE for this CU. */
@@ -4802,7 +4853,6 @@ void new_dwarf3_reader_wrk (
          = VG_(newXA)( ML_(dinfo_zalloc), "di.readdwarf3.ndrw.9",
                        ML_(dinfo_free), 
                        sizeof(TempVar*) );
-      vg_assert(dioff_lookup_tab);
 
       n = VG_(sizeXA)( tempvars );
       Word first_primary_var = 0;

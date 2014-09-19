@@ -1047,14 +1047,12 @@ static void add_var_to_arange (
       vg_assert(first->aMin <= first->aMax);
       /* create a new range */
       nyu = VG_(OSetGen_AllocNode)( scope, sizeof(DiAddrRange) );
-      vg_assert(nyu);
       nyu->aMin = aMin;
       nyu->aMax = tmp;
       vg_assert(nyu->aMin <= nyu->aMax);
       /* copy vars into it */
       vg_assert(first->vars);
       nyu->vars = VG_(cloneXA)( "di.storage.avta.1", first->vars );
-      vg_assert(nyu->vars);
       VG_(OSetGen_Insert)( scope, nyu );
       first = nyu;
    }
@@ -1077,14 +1075,12 @@ static void add_var_to_arange (
       vg_assert(last->aMin <= last->aMax);
       /* create a new range */
       nyu = VG_(OSetGen_AllocNode)( scope, sizeof(DiAddrRange) );
-      vg_assert(nyu);
       nyu->aMin = tmp;
       nyu->aMax = aMax;
       vg_assert(nyu->aMin <= nyu->aMax);
       /* copy vars into it */
       vg_assert(last->vars);
       nyu->vars = VG_(cloneXA)( "di.storage.avta.2", last->vars );
-      vg_assert(nyu->vars);
       VG_(OSetGen_Insert)( scope, nyu );
       last = nyu;
    }
@@ -1165,7 +1161,7 @@ void ML_(addVar)( struct _DebugInfo* di,
    MaybeULong mul;
    const HChar* badness;
 
-   tl_assert(di && di->admin_tyents);
+   vg_assert(di && di->admin_tyents);
 
    if (0) {
       VG_(printf)("  ML_(addVar): level %d  %#lx-%#lx  %s :: ",
@@ -1190,7 +1186,7 @@ void ML_(addVar)( struct _DebugInfo* di,
    vg_assert(gexpr);
 
    ent = ML_(TyEnts__index_by_cuOff)( di->admin_tyents, NULL, typeR);
-   tl_assert(ent);
+   vg_assert(ent);
    vg_assert(ML_(TyEnt__is_type)(ent));
 
    /* "Comment_Regarding_Text_Range_Checks" (is referred to elsewhere)
@@ -1260,7 +1256,6 @@ void ML_(addVar)( struct _DebugInfo* di,
                                    ML_(cmp_for_DiAddrRange_range),
                                    ML_(dinfo_zalloc), "di.storage.addVar.2",
                                    ML_(dinfo_free) );
-      vg_assert(scope);
       if (0) VG_(printf)("create: scope = %p, adding at %ld\n",
                          scope, VG_(sizeXA)(di->varinfo));
       VG_(addToXA)( di->varinfo, &scope );
@@ -1270,13 +1265,11 @@ void ML_(addVar)( struct _DebugInfo* di,
          All of these invariants get checked both add_var_to_arange
          and after reading is complete, in canonicaliseVarInfo. */
       nyu = VG_(OSetGen_AllocNode)( scope, sizeof(DiAddrRange) );
-      vg_assert(nyu);
       nyu->aMin = (Addr)0;
       nyu->aMax = ~(Addr)0;
       nyu->vars = VG_(newXA)( ML_(dinfo_zalloc), "di.storage.addVar.3",
                               ML_(dinfo_free),
                               sizeof(DiVariable) );
-      vg_assert(nyu->vars);
       VG_(OSetGen_Insert)( scope, nyu );
    }
 
@@ -1865,8 +1858,8 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
 static DiLoc* sorting_loctab = NULL;
 static Int compare_DiLoc_via_ix ( const void* va, const void* vb ) 
 {
-   const DiLoc* a = &sorting_loctab[*(UInt*)va];
-   const DiLoc* b = &sorting_loctab[*(UInt*)vb];
+   const DiLoc* a = &sorting_loctab[*(const UInt*)va];
+   const DiLoc* b = &sorting_loctab[*(const UInt*)vb];
    if (a->addr < b->addr) return -1;
    if (a->addr > b->addr) return  1;
    return 0;

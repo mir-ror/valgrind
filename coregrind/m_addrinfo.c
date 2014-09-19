@@ -40,11 +40,53 @@
 #include "pub_core_mallocfree.h"
 #include "pub_core_machine.h"
 #include "pub_core_options.h"
+#include "pub_core_threadstate.h"
 #include "pub_core_stacktrace.h"
+#include "pub_core_stacks.h"
+#include "pub_core_aspacemgr.h"
+
+/* Returns the tid whose stack includes the address a.
+   If not found, returns VG_INVALID_THREADID. */
+static ThreadId find_tid_with_stack_containing (Addr a)
+{
+   ThreadId tid;
+   Addr start, end;
+
+   start = 0;
+   end = 0;
+   VG_(stack_limits)(a, &start, &end);
+   if (start == end) {
+      // No stack found
+      vg_assert (start == 0 && end == 0);
+      return VG_INVALID_THREADID;
+   }
+
+   /* Stack limits found. Search the tid to which this stack belongs. */
+   vg_assert (start <= a);
+   vg_assert (a <= end);
+
+   /* The stack end (highest accessible byte) is for sure inside the 'active'
+      part of the stack of the searched tid.
+      So, scan all 'active' stacks with VG_(thread_stack_reset_iter) ... */
+   {
+      Addr       stack_min, stack_max;
+
+      VG_(thread_stack_reset_iter)(&tid);
+      while ( VG_(thread_stack_next)(&tid, &stack_min, &stack_max) ) {
+         if (stack_min <= end && end <= stack_max)
+            return tid;
+      }
+   }
+
+   /* We can arrive here if a stack was registered with wrong bounds
+      (e.g. end above the highest addressable byte)
+      and/or if the thread for the registered stack is dead, but
+      the stack was not unregistered. */
+   return VG_INVALID_THREADID;
+}
 
 void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
 {
-   ThreadId   tid;
    VgSectKind sect;
 
    /* -- Perhaps the variable type/location data describes it? -- */
@@ -92,6 +134,7 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
    }
    /* -- Perhaps it's on a thread's stack? -- */
    {
+      ThreadId   tid;
       Addr       stack_min, stack_max;
       VG_(thread_stack_reset_iter)(&tid);
       while ( VG_(thread_stack_next)(&tid, &stack_min, &stack_max) ) {
@@ -106,6 +149,8 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
             ai->Addr.Stack.tinfo.tid = tid;
             ai->Addr.Stack.IP = 0;
             ai->Addr.Stack.frameNo = -1;
+            ai->Addr.Stack.stackPos = StackPos_stacked;
+            ai->Addr.Stack.spoffset = 0; // Unused.
             /* It is on thread tid stack. Build a stacktrace, and
                find the frame sp[f] .. sp[f+1] where the address is.
                Store the found frameNo and the corresponding IP in
@@ -166,6 +211,53 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
       ai->Addr.SectKind.kind = sect;
       return;
    }
+
+   /* -- and yet another last ditch attempt at classification -- */
+   /* If the address is in a stack between the stack bottom (highest byte)
+      and the current stack ptr, it will have been already described above.
+      But maybe it is in a stack, but below the stack ptr (typical
+      for a 'use after return' or in the stack guard page (thread stack
+      too small). */
+   {
+      ThreadId   tid;
+      StackPos stackPos = StackPos_stacked;
+      // Default init to StackPos_stacked, to silence gcc warning.
+      // We assert this value is overriden if a stack descr is produced.
+
+      // First try to find a tid with stack containing a
+      tid = find_tid_with_stack_containing (a);
+      if (tid != VG_INVALID_THREADID) {
+         /* Should be below stack pointer, as if it is >= SP, it
+            will have been described as StackPos_stacked above. */
+         stackPos = StackPos_below_stack_ptr;
+      } else {
+         /* Try to find a stack with guard page containing a.
+            For this, check if a is in a page mapped without r, w and x. */
+         const NSegment *seg = VG_(am_find_nsegment) (a);
+         if (seg != NULL && seg->kind == SkAnonC
+             && !seg->hasR && !seg->hasW && !seg->hasX) {
+            /* This looks a plausible guard page. Check if a is close to
+               the start of stack (lowest byte). */
+            tid = find_tid_with_stack_containing (VG_PGROUNDUP(a+1));
+            if (tid != VG_INVALID_THREADID)
+               stackPos = StackPos_guard_page;
+         }
+      }
+
+      if (tid != VG_INVALID_THREADID) {
+         ai->tag  = Addr_Stack;
+         VG_(initThreadInfo)(&ai->Addr.Stack.tinfo);
+         ai->Addr.Stack.tinfo.tid = tid;
+         ai->Addr.Stack.IP = 0;
+         ai->Addr.Stack.frameNo = -1;
+         vg_assert (stackPos != StackPos_stacked);
+         ai->Addr.Stack.stackPos = stackPos;
+         vg_assert (a < VG_(get_SP)(tid));
+         ai->Addr.Stack.spoffset = a - VG_(get_SP)(tid);
+         return;
+      }
+   }
+
    /* -- Clueless ... -- */
    ai->tag = Addr_Unknown;
    return;
@@ -180,11 +272,14 @@ void VG_(initThreadInfo) (ThreadInfo *tinfo)
 void VG_(clear_addrinfo) ( AddrInfo* ai)
 {
    switch (ai->tag) {
+      case Addr_Undescribed:
+         break;
+
       case Addr_Unknown:
-          break;
+         break;
 
       case Addr_Stack: 
-          break;
+         break;
 
       case Addr_Block:
          break;
@@ -256,6 +351,9 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
    vg_assert (!maybe_gcc || mc); // maybe_gcc can only be given in mc mode.
 
    switch (ai->tag) {
+      case Addr_Undescribed:
+         VG_(core_panic)("mc_pp_AddrInfo Addr_Undescribed");
+
       case Addr_Unknown:
          if (maybe_gcc) {
             VG_(emit)( "%sAddress 0x%llx is just below the stack ptr.  "
@@ -309,6 +407,23 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
                           hasfile ? file : "???", strlinenum,
                           xpost );
          }
+         switch (ai->Addr.Stack.stackPos) {
+            case StackPos_stacked: break; // nothing more to say
+
+            case StackPos_below_stack_ptr:
+            case StackPos_guard_page:
+                VG_(emit)("%s%s%ld bytes below stack pointer%s\n",
+                          xpre, 
+                          ai->Addr.Stack.stackPos == StackPos_guard_page ?
+                          "In stack guard protected page, " : "",
+                          - ai->Addr.Stack.spoffset,
+                          xpost);
+                // Note: we change the sign of spoffset as the message speaks
+                // about the nr of bytes below stack pointer.
+                break;
+
+            default: vg_assert(0);
+         }
          break;
 
       case Addr_Block: {
@@ -356,7 +471,7 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
             );
          if (ai->Addr.Block.block_kind==Block_Mallocd) {
             VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
-            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
+            vg_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
          }
          else if (ai->Addr.Block.block_kind==Block_Freed) {
             VG_(pp_ExeContext)(ai->Addr.Block.freed_at);
@@ -373,14 +488,14 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
                   || ai->Addr.Block.block_kind==Block_UserG) {
             // client-defined
             VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
-            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
+            vg_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
             /* Nb: cannot have a freed_at, as a freed client-defined block
                has a Block_Freed block_kind. */
          } else {
             // Client or Valgrind arena. At least currently, we never
             // have stacktraces for these.
-            tl_assert (ai->Addr.Block.allocated_at == VG_(null_ExeContext)());
-            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
+            vg_assert (ai->Addr.Block.allocated_at == VG_(null_ExeContext)());
+            vg_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
          }
          if (ai->Addr.Block.alloc_tinfo.tnr || ai->Addr.Block.alloc_tinfo.tid)
             VG_(emit)(
@@ -432,7 +547,7 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
          break;
 
       default:
-         VG_(tool_panic)("mc_pp_AddrInfo");
+         VG_(core_panic)("mc_pp_AddrInfo");
    }
 }
 

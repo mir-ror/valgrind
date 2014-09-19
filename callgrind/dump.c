@@ -1395,7 +1395,7 @@ static void print_bbccs_of_thread(thread_info* ti)
   init_fpos(&lastFnPos);
   init_apos(&lastAPos, 0, 0, 0);
 
-  if (p) while(1) {
+  while(1) {
 
     /* on context/function change, print old cost buffer before */
     if (lastFnPos.cxt && ((*p==0) ||				 
@@ -1448,7 +1448,7 @@ static void print_bbccs_of_thread(thread_info* ti)
   }
 
   close_dumpfile(print_fd);
-  if (array) VG_(free)(array);
+  VG_(free)(array);
   
   /* set counters of last dump */
   CLG_(copy_cost)( CLG_(sets).full, ti->lastdump_cost,
@@ -1581,7 +1581,6 @@ void CLG_(init_dumps)()
    /* allocate space big enough for final filenames */
    filename = (HChar*) CLG_MALLOC("cl.dump.init_dumps.2",
                                  VG_(strlen)(out_file)+32);
-   CLG_ASSERT(filename != 0);
        
    /* Make sure the output base file can be written.
     * This is used for the dump at program termination.

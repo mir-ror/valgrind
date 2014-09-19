@@ -174,26 +174,7 @@ Addr allocstack ( ThreadId tid )
 
 void find_stack_segment(ThreadId tid, Addr sp)
 {
-   /* We don't really know where the client stack is, because it's
-      allocated by the client.  The best we can do is look at the
-      memory mappings and try to derive some useful information.  We
-      assume that esp starts near its highest possible value, and can
-      only go down to the start of the mmaped segment. */
-   ThreadState *tst = VG_(get_ThreadState)(tid);
-   const NSegment *seg = VG_(am_find_nsegment)(sp);
-   if (seg && seg->kind != SkResvn) {
-      tst->client_stack_highest_word = (Addr)VG_PGROUNDUP(sp);
-      tst->client_stack_szB = tst->client_stack_highest_word - seg->start;
-
-      if (1)
-         VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-                     tid, seg->start, VG_PGROUNDUP(sp));
-   } else {
-       VG_(printf)("couldn't find user stack\n");
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with SP(%#lx) unmapped\n",
-                   tid, sp);
-      tst->client_stack_szB  = 0;
-   }
+   ML_(guess_and_register_stack) (sp, VG_(get_ThreadState)(tid));
 }
 
 
@@ -377,8 +358,7 @@ static Int allocated_port_count = 0;
 static void port_create_vanilla(mach_port_t port)
 {
    OpenPort* op
-     = VG_(arena_calloc)(VG_AR_CORE, "syswrap-darwin.port_create_vanilla", 
-			 sizeof(OpenPort), 1);
+     = VG_(calloc)("syswrap-darwin.port_create_vanilla", sizeof(OpenPort), 1);
    op->port = port;
    /* Add it to the list. */
    op->next = allocated_ports;
@@ -432,10 +412,10 @@ __private_extern__ void assign_port_name(mach_port_t port, const HChar *name)
    i = info_for_port(port);
    vg_assert(i);
 
-   if (i->name) VG_(arena_free)(VG_AR_CORE, i->name);
+   if (i->name) VG_(free)(i->name);
    i->name = 
-       VG_(arena_malloc)(VG_AR_CORE, "syswrap-darwin.mach-port-name", 
-                         VG_(strlen)(name) + PORT_STRLEN + 1);
+       VG_(malloc)("syswrap-darwin.mach-port-name", 
+                   VG_(strlen)(name) + PORT_STRLEN + 1);
    VG_(sprintf)(i->name, name, port);
 }
 
@@ -501,8 +481,8 @@ void record_port_mod_refs(mach_port_t port, mach_port_type_t right, Int delta)
          if(i->next)
             i->next->prev = i->prev;
          if(i->name) 
-            VG_(arena_free) (VG_AR_CORE, i->name);
-         VG_(arena_free) (VG_AR_CORE, i);
+            VG_(free) (i->name);
+         VG_(free) (i);
          allocated_port_count--;
          return;
       }
@@ -572,8 +552,7 @@ void record_named_port(ThreadId tid, mach_port_t port,
 
    /* Not already one: allocate an OpenPort */
    if (i == NULL) {
-      i = VG_(arena_malloc)(VG_AR_CORE, "syswrap-darwin.mach-port", 
-                            sizeof(OpenPort));
+      i = VG_(malloc)("syswrap-darwin.mach-port", sizeof(OpenPort));
 
       i->prev = NULL;
       i->next = allocated_ports;
@@ -3064,7 +3043,6 @@ PRE(posix_spawn)
       // allocate
       argv = VG_(malloc)( "di.syswrap.pre_sys_execve.1",
                           (tot_args+1) * sizeof(HChar*) );
-      vg_assert(argv);
       // copy
       j = 0;
       argv[j++] = launcher_basename;
@@ -3783,6 +3761,10 @@ PRE(__sysctl)
             Addr *oldp = (Addr *)ARG3;
             size_t *oldlenp = (size_t *)ARG4;
             if (oldlenp) {
+               // According to some searches on the net, it looks like USRSTACK
+               // gives the address of the byte following the highest byte of the stack
+               // As VG_(clstk_end) is the address of the highest addressable byte, we
+               // add +1.
                Addr stack_end = VG_(clstk_end)+1;
                size_t oldlen = *oldlenp;
                // always return actual size
@@ -7056,7 +7038,7 @@ POST(bootstrap_look_up)
    } else {
        PRINT("not found");
    }
-   VG_(arena_free)(VG_AR_CORE, MACH_ARG(bootstrap_look_up.service_name));
+   VG_(free)(MACH_ARG(bootstrap_look_up.service_name));
 }
 
 PRE(bootstrap_look_up)
@@ -7074,8 +7056,7 @@ PRE(bootstrap_look_up)
    PRINT("bootstrap_look_up(\"%s\")", req->service_name);
 
    MACH_ARG(bootstrap_look_up.service_name) =
-      VG_(arena_strdup)(VG_AR_CORE, "syswrap-darwin.bootstrap-name", 
-                        req->service_name);
+      VG_(strdup)("syswrap-darwin.bootstrap-name", req->service_name);
 
    AFTER = POST_FN(bootstrap_look_up);
 }
@@ -8120,7 +8101,7 @@ PRE(sigreturn)
 static VexGuestX86SegDescr* alloc_zeroed_x86_LDT ( void )
 {
    Int nbytes = VEX_GUEST_X86_LDT_NENT * sizeof(VexGuestX86SegDescr);
-   return VG_(arena_calloc)(VG_AR_CORE, "syswrap-darwin.ldt", nbytes, 1);
+   return VG_(calloc)("syswrap-darwin.ldt", nbytes, 1);
 }
 #endif
 

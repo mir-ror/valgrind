@@ -562,19 +562,15 @@ Int VG_(readlink) (const HChar* path, HChar** result)
    }
 }
 
-Int VG_(getdents) (Int fd, struct vki_dirent *dirp, UInt count)
+#if defined(VGO_linux)
+Int VG_(getdents64) (Int fd, struct vki_dirent64 *dirp, UInt count)
 {
-#  if defined(VGO_linux)
    SysRes res;
    /* res = getdents( fd, dirp, count ); */
-   res = VG_(do_syscall3)(__NR_getdents, fd, (UWord)dirp, count);
+   res = VG_(do_syscall3)(__NR_getdents64, fd, (UWord)dirp, count);
    return sr_isError(res) ? -1 : sr_Res(res);
-#  elif defined(VGO_darwin)
-   I_die_here;
-#  else
-#    error "Unknown OS"
-#  endif
 }
+#endif
 
 /* Check accessibility of a file.  Returns zero for access granted,
    nonzero otherwise. */

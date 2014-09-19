@@ -8,7 +8,7 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT([Valgrind],[3.10.0.SVN],[valgrind-users@lists.sourceforge.net])
+AC_INIT([Valgrind],[3.11.0.SVN],[valgrind-users@lists.sourceforge.net])
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -131,14 +131,13 @@ fi
 ]
 AM_CONDITIONAL(COMPILER_IS_CLANG, test $is_clang = clang)
 
+# Note: m4 arguments are quoted with [ and ] so square brackets in shell
+# statements have to be quoted.
 case "${is_clang}-${gcc_version}" in
-     notclang-3.*)
+     notclang-[[3-9]].*|notclang-[[1-9][0-9]]*)
 	AC_MSG_RESULT([ok (${gcc_version})])
 	;;
-     notclang-4.*)
-	AC_MSG_RESULT([ok (${gcc_version})])
-	;;
-     clang-2.9|clang-3.*|clang-4.*)
+     clang-2.9|clang-[[3-9]].*|clang-[[1-9][0-9]]*)
 	AC_MSG_RESULT([ok (clang-${gcc_version})])
 	;;
      *)
@@ -397,7 +396,7 @@ esac
 # does not support building 32 bit programs
 
 case "$ARCH_MAX-$VGCONF_OS" in
-     amd64-linux|ppc64be-linux)
+     amd64-linux|ppc64be-linux|arm64-linux)
         AC_MSG_CHECKING([for 32 bit build support])
         safe_CFLAGS=$CFLAGS
         CFLAGS="-m32"
@@ -855,7 +854,7 @@ if test x$ac_cv_header_features_h = xyes; then
 glibc version is: __GLIBC__ __GLIBC_MINOR__
 #endif
 _ACEOF
-  GLIBC_VERSION="`$CPP conftest.$ac_ext | $SED -n 's/^glibc version is: //p' | $SED 's/ /./g'`"
+  GLIBC_VERSION="`$CPP -P conftest.$ac_ext | $SED -n 's/^glibc version is: //p' | $SED 's/ /./g'`"
 fi
 
 # not really a version check
@@ -876,134 +875,41 @@ AC_EGREP_CPP([BIONIC_LIBC], [
 GLIBC_VERSION="bionic")
 
 
-AC_MSG_CHECKING([the GLIBC_VERSION version])
+AC_MSG_CHECKING([the glibc version])
 
 case "${GLIBC_VERSION}" in
      2.2)
-	AC_MSG_RESULT(2.2 family)
-	AC_DEFINE([GLIBC_2_2], 1, [Define to 1 if you're using glibc 2.2.x])
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
 	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.2-LinuxThreads-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-
-     2.3)
-	AC_MSG_RESULT(2.3 family)
-	AC_DEFINE([GLIBC_2_3], 1, [Define to 1 if you're using glibc 2.3.x])
-	DEFAULT_SUPP="glibc-2.3.supp ${DEFAULT_SUPP}"
+     2.[[3-6]])
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	DEFAULT_SUPP="glibc-${GLIBC_VERSION}.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-
-     2.4)
-	AC_MSG_RESULT(2.4 family)
-	AC_DEFINE([GLIBC_2_4], 1, [Define to 1 if you're using glibc 2.4.x])
-	DEFAULT_SUPP="glibc-2.4.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-
-     2.5)
-	AC_MSG_RESULT(2.5 family)
-	AC_DEFINE([GLIBC_2_5], 1, [Define to 1 if you're using glibc 2.5.x])
-	DEFAULT_SUPP="glibc-2.5.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.6)
-	AC_MSG_RESULT(2.6 family)
-	AC_DEFINE([GLIBC_2_6], 1, [Define to 1 if you're using glibc 2.6.x])
-	DEFAULT_SUPP="glibc-2.6.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.7)
-	AC_MSG_RESULT(2.7 family)
-	AC_DEFINE([GLIBC_2_7], 1, [Define to 1 if you're using glibc 2.7.x])
+     2.[[7-9]])
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.8)
-	AC_MSG_RESULT(2.8 family)
-	AC_DEFINE([GLIBC_2_8], 1, [Define to 1 if you're using glibc 2.8.x])
+     2.10|2.11)
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
+		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.9)
-	AC_MSG_RESULT(2.9 family)
-	AC_DEFINE([GLIBC_2_9], 1, [Define to 1 if you're using glibc 2.9.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.10)
-	AC_MSG_RESULT(2.10 family)
-	AC_DEFINE([GLIBC_2_10], 1, [Define to 1 if you're using glibc 2.10.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.11)
-	AC_MSG_RESULT(2.11 family)
-	AC_DEFINE([GLIBC_2_11], 1, [Define to 1 if you're using glibc 2.11.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-        ;;
-     2.12)
-	AC_MSG_RESULT(2.12 family)
-	AC_DEFINE([GLIBC_2_12], 1, [Define to 1 if you're using glibc 2.12.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.13)
-	AC_MSG_RESULT(2.13 family)
-	AC_DEFINE([GLIBC_2_13], 1, [Define to 1 if you're using glibc 2.13.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.14)
-	AC_MSG_RESULT(2.14 family)
-	AC_DEFINE([GLIBC_2_14], 1, [Define to 1 if you're using glibc 2.14.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.15)
-	AC_MSG_RESULT(2.15 family)
-	AC_DEFINE([GLIBC_2_15], 1, [Define to 1 if you're using glibc 2.15.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.16)
-	AC_MSG_RESULT(2.16 family)
-	AC_DEFINE([GLIBC_2_16], 1, [Define to 1 if you're using glibc 2.16.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.17)
-	AC_MSG_RESULT(2.17 family)
-	AC_DEFINE([GLIBC_2_17], 1, [Define to 1 if you're using glibc 2.17.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.18)
-	AC_MSG_RESULT(2.18 family)
-	AC_DEFINE([GLIBC_2_18], 1, [Define to 1 if you're using glibc 2.18.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.19)
-	AC_MSG_RESULT(2.19 family)
-	AC_DEFINE([GLIBC_2_19], 1, [Define to 1 if you're using glibc 2.19.x])
+     2.*)
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
+		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
+	AC_DEFINE([GLIBC_MANDATORY_INDEX_AND_STRLEN_REDIRECT], 1,
+		  [Define to 1 if index() and strlen() have been optimized heavily (x86 glibc >= 2.12)])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
@@ -1018,10 +924,9 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([BIONIC_LIBC], 1, [Define to 1 if you're using Bionic])
 	DEFAULT_SUPP="bionic.supp ${DEFAULT_SUPP}"
 	;;
-
-     *)
+     2.0|2.1|*)
 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
-	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.19])
+	AC_MSG_ERROR([Valgrind requires glibc version 2.2 or later])
 	AC_MSG_ERROR([or Darwin or Bionic libc])
 	;;
 esac
@@ -1707,24 +1612,29 @@ CFLAGS=$safe_CFLAGS
 AC_SUBST(FLAG_MSSE)
 
 
-# does this compiler support -mpreferred-stack-boundary=2 ?
-AC_MSG_CHECKING([if gcc accepts -mpreferred-stack-boundary=2])
+# does this compiler support -mpreferred-stack-boundary=2 when
+# generating code for a 32-bit target?  Note that we only care about
+# this when generating code for (32-bit) x86, so if the compiler
+# doesn't recognise -m32 it's no big deal.  We'll just get code for
+# the Memcheck and other helper functions, that is a bit slower than
+# it could be, on x86; and no difference at all on any other platform.
+AC_MSG_CHECKING([if gcc accepts -mpreferred-stack-boundary=2 -m32])
 
 safe_CFLAGS=$CFLAGS
-CFLAGS="-mpreferred-stack-boundary=2"
+CFLAGS="-mpreferred-stack-boundary=2 -m32"
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
   return 0;
 ]])], [
-PREFERRED_STACK_BOUNDARY="-mpreferred-stack-boundary=2"
+PREFERRED_STACK_BOUNDARY_2="-mpreferred-stack-boundary=2"
 AC_MSG_RESULT([yes])
 ], [
-PREFERRED_STACK_BOUNDARY=""
+PREFERRED_STACK_BOUNDARY_2=""
 AC_MSG_RESULT([no])
 ])
 CFLAGS=$safe_CFLAGS
 
-AC_SUBST(PREFERRED_STACK_BOUNDARY)
+AC_SUBST(PREFERRED_STACK_BOUNDARY_2)
 
 
 # Convenience function to check whether GCC supports a particular
@@ -1732,20 +1642,24 @@ AC_SUBST(PREFERRED_STACK_BOUNDARY)
 # to check (without -W), then the conditional name to set if that
 # warning flag is supported.
 AC_DEFUN([AC_GCC_WARNING_COND],[
-AC_MSG_CHECKING([if gcc accepts -W$1])
-safe_CFLAGS=$CLFLAGS
-CFLAGS="-W$1"
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[;]])], [
-has_warning_flag=yes
-AC_MSG_RESULT([yes])], [
-has_warning_flag=no
-AC_MSG_RESULT([no])])
-CFLAGS=$safe_CFLAGS
-AM_CONDITIONAL([$2], test x$has_warning_flag = xyes)]
-)
+  AC_MSG_CHECKING([if gcc accepts -W$1])
+  safe_CFLAGS=$CFLAGS
+  CFLAGS="-W$1"
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[;]])], [
+  has_warning_flag=yes
+  AC_MSG_RESULT([yes])], [
+  has_warning_flag=no
+  AC_MSG_RESULT([no])])
+  CFLAGS=$safe_CFLAGS
+  AM_CONDITIONAL([$2], test x$has_warning_flag = xyes)
+])
 
 AC_GCC_WARNING_COND([pointer-sign], [HAS_POINTER_SIGN_WARNING])
 AC_GCC_WARNING_COND([write-strings], [HAS_WRITE_STRINGS_WARNING])
+if test $has_warning_flag = yes; then
+  CFLAGS="$CFLAGS -Wwrite-strings"
+  CXXFLAGS="$CXXFLAGS -Wwrite-strings"
+fi
 
 # Convenience function to check whether GCC supports a particular
 # warning option. Similar to AC_GCC_WARNING_COND, but does a
@@ -1756,15 +1670,15 @@ AC_GCC_WARNING_COND([write-strings], [HAS_WRITE_STRINGS_WARNING])
 # that checking is done against the warning flag itself, but the
 # substitution is then done to cancel the warning flag.
 AC_DEFUN([AC_GCC_WARNING_SUBST_NO],[
-AC_MSG_CHECKING([if gcc accepts -W$1])
-safe_CFLAGS=$CLFLAGS
-CFLAGS="-W$1"
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[;]])], [
-AC_SUBST([$2], [-Wno-$1])
-AC_MSG_RESULT([yes])], [
-AC_SUBST([$2], [])
-AC_MSG_RESULT([no])])
-CFLAGS=$safe_CFLAGS
+  AC_MSG_CHECKING([if gcc accepts -W$1])
+  safe_CFLAGS=$CFLAGS
+  CFLAGS="-W$1"
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[;]])], [
+  AC_SUBST([$2], [-Wno-$1])
+  AC_MSG_RESULT([yes])], [
+  AC_SUBST([$2], [])
+  AC_MSG_RESULT([no])])
+  CFLAGS=$safe_CFLAGS
 ])
 
 AC_GCC_WARNING_SUBST_NO([empty-body], [FLAG_W_NO_EMPTY_BODY])
@@ -1773,6 +1687,9 @@ AC_GCC_WARNING_SUBST_NO([tautological-compare], [FLAG_W_NO_TAUTOLOGICAL_COMPARE]
 AC_GCC_WARNING_SUBST_NO([nonnull], [FLAG_W_NO_NONNULL])
 AC_GCC_WARNING_SUBST_NO([overflow], [FLAG_W_NO_OVERFLOW])
 AC_GCC_WARNING_SUBST_NO([uninitialized], [FLAG_W_NO_UNINITIALIZED])
+AC_GCC_WARNING_SUBST_NO([unused-function], [FLAG_W_NO_UNUSED_FUNCTION])
+AC_GCC_WARNING_SUBST_NO([static-local-in-inline], [FLAG_W_NO_STATIC_LOCAL_IN_INLINE])
+
 
 # does this compiler support -Wextra or the older -W ?
 
@@ -1866,25 +1783,6 @@ AC_MSG_RESULT([no])
 ])
 AM_CONDITIONAL(DWARF4, test x$ac_have_dwarf4 = xyes)
 CFLAGS=$safe_CFLAGS
-
-
-# does this compiler support -gstabs ?
-
-AC_MSG_CHECKING([if gcc accepts -gstabs])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-gstabs"
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
-  return 0;
-]])], [
-ac_have_gstabs=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_gstabs=no
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-AM_CONDITIONAL([HAVE_GSTABS], [test x$ac_have_gstabs = xyes])
 
 
 # does this compiler support nested functions ?
@@ -2024,7 +1922,6 @@ if test x$ac_have_as_ppc_fpPO = xyes ; then
   AC_DEFINE(HAVE_AS_PPC_FPPO, 1, [Define to 1 if as supports floating point phased out category.])
 fi
 
-CFLAGS=$safe_CFLAGS
 
 # does the x86/amd64 assembler understand SSE3 instructions?
 # Note, this doesn't generate a C-level symbol.  It generates a
@@ -2996,6 +2893,7 @@ AC_CONFIG_FILES([
    none/tests/ppc64/Makefile
    none/tests/x86/Makefile
    none/tests/arm/Makefile
+   none/tests/arm64/Makefile
    none/tests/s390x/Makefile
    none/tests/mips32/Makefile
    none/tests/mips64/Makefile

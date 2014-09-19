@@ -53,7 +53,7 @@
 #include "pub_core_demangle.h"     // VG_(maybe_Z_demangle)
 #include "pub_core_libcproc.h"     // VG_(libdir)
 
-#include "config.h" /* GLIBC_2_* */
+#include "config.h" /* GLIBC_MANDATORY_*_REDIRECT */
 
 
 /* This module is a critical part of the redirection/intercept system.
@@ -354,8 +354,8 @@ static HChar** alloc_symname_array ( HChar* pri_name, HChar** sec_names,
    arr[i++] = pri_name;
    pp = sec_names;
    while (*pp) { arr[i++] = *pp; pp++; }
-   tl_assert(i == n_req);
-   tl_assert(arr[n_req] == NULL);
+   vg_assert(i == n_req);
+   vg_assert(arr[n_req] == NULL);
    return arr;
 }
 
@@ -591,11 +591,8 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newdi )
          }
 
          spec = dinfo_zalloc("redir.rnnD.1", sizeof(Spec));
-         vg_assert(spec);
          spec->from_sopatt = dinfo_strdup("redir.rnnD.2", demangled_sopatt);
          spec->from_fnpatt = dinfo_strdup("redir.rnnD.3", demangled_fnpatt);
-         vg_assert(spec->from_sopatt);
-         vg_assert(spec->from_fnpatt);
          spec->to_addr = sym_avmas.main;
          spec->isWrap = isWrap;
          spec->becTag = becTag;
@@ -659,7 +656,6 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newdi )
    /* Ok.  Now specList holds the list of specs from the DebugInfo.
       Build a new TopSpec, but don't add it to topSpecs yet. */
    newts = dinfo_zalloc("redir.rnnD.4", sizeof(TopSpec));
-   vg_assert(newts);
    newts->next    = NULL; /* not significant */
    newts->seginfo = newdi;
    newts->specs   = specList;
@@ -1171,11 +1167,9 @@ static void add_hardwired_spec (const  HChar* sopatt, const HChar* fnpatt,
                                 const HChar** mandatory )
 {
    Spec* spec = dinfo_zalloc("redir.ahs.1", sizeof(Spec));
-   vg_assert(spec);
 
    if (topSpecs == NULL) {
       topSpecs = dinfo_zalloc("redir.ahs.2", sizeof(TopSpec));
-      vg_assert(topSpecs);
       /* symtab_zalloc sets all fields to zero */
    }
 
@@ -1238,10 +1232,7 @@ void VG_(redir_initialise) ( void )
       start, otherwise ld.so (glibc-2.3.5) makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
       const HChar** mandatory;
-#     if defined(GLIBC_2_2) || defined(GLIBC_2_3) || defined(GLIBC_2_4) \
-         || defined(GLIBC_2_5) || defined(GLIBC_2_6) || defined(GLIBC_2_7) \
-         || defined(GLIBC_2_8) || defined(GLIBC_2_9) \
-         || defined(GLIBC_2_10) || defined(GLIBC_2_11)
+#     ifndef GLIBC_MANDATORY_INDEX_AND_STRLEN_REDIRECT
       mandatory = NULL;
 #     else
       /* for glibc-2.12 and later, this is mandatory - can't sanely
@@ -1278,9 +1269,7 @@ void VG_(redir_initialise) ( void )
       add_hardwired_spec(
          "ld-linux-x86-64.so.2", "strlen",
          (Addr)&VG_(amd64_linux_REDIR_FOR_strlen),
-#        if defined(GLIBC_2_2) || defined(GLIBC_2_3) || defined(GLIBC_2_4) \
-            || defined(GLIBC_2_5) || defined(GLIBC_2_6) || defined(GLIBC_2_7) \
-            || defined(GLIBC_2_8) || defined(GLIBC_2_9)
+#        ifndef GLIBC_MANDATORY_STRLEN_REDIRECT
          NULL
 #        else
          /* for glibc-2.10 and later, this is mandatory - can't sanely
@@ -1384,6 +1373,17 @@ void VG_(redir_initialise) ( void )
          (Addr)&VG_(arm_linux_REDIR_FOR_memcpy),
          complain_about_stripped_glibc_ldso
       );
+      /* strcmp */
+      add_hardwired_spec(
+         "ld-linux.so.3", "strcmp",
+         (Addr)&VG_(arm_linux_REDIR_FOR_strcmp),
+         complain_about_stripped_glibc_ldso
+      );
+      add_hardwired_spec(
+         "ld-linux-armhf.so.3", "strcmp",
+         (Addr)&VG_(arm_linux_REDIR_FOR_strcmp),
+         complain_about_stripped_glibc_ldso
+      );
    }
 
 #  elif defined(VGP_arm64_linux)
@@ -1452,7 +1452,12 @@ void VG_(redir_initialise) ( void )
    }
 
 #  elif defined(VGP_s390x_linux)
-   /* nothing so far */
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      // added in rsponse to BZ 327943
+      add_hardwired_spec("ld64.so.1", "index",
+                         (Addr)&VG_(s390x_linux_REDIR_FOR_index),
+                         complain_about_stripped_glibc_ldso);
+   }
 
 #  elif defined(VGP_mips32_linux)
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
@@ -1493,13 +1498,12 @@ static void* dinfo_zalloc(const HChar* ec, SizeT n) {
    void* p;
    vg_assert(n > 0);
    p = VG_(arena_malloc)(VG_AR_DINFO, ec, n);
-   tl_assert(p);
    VG_(memset)(p, 0, n);
    return p;
 }
 
 static void dinfo_free(void* p) {
-   tl_assert(p);
+   vg_assert(p);
    return VG_(arena_free)(VG_AR_DINFO, p);
 }
 

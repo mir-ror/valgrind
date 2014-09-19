@@ -112,7 +112,7 @@ static void fill_ehdr(ESZ(Ehdr) *ehdr, Int num_phdrs)
 
 static void fill_phdr(ESZ(Phdr) *phdr, const NSegment *seg, UInt off, Bool write)
 {
-   SizeT len = seg->end - seg->start;
+   SizeT len = seg->end - seg->start + 1;
 
    write = write && should_dump(seg);
 
@@ -169,7 +169,7 @@ static void add_note(struct note **list, const HChar *name, UInt type,
    Int notelen = sizeof(struct note) + 
       VG_ROUNDUP(namelen, 4) + 
       VG_ROUNDUP(datasz, 4);
-   struct note *n = VG_(arena_malloc)(VG_AR_CORE, "coredump-elf.an.1", notelen);
+   struct note *n = VG_(malloc)("coredump-elf.an.1", notelen);
 
    VG_(memset)(n, 0, notelen);
 
@@ -603,7 +603,6 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
    buf = VG_(malloc)( "coredump-elf.mec.1", 
                       VG_(strlen)(coreext) + VG_(strlen)(basename)
                          + 100/*for the two %ds. */ );
-   vg_assert(buf);
 
    for(;;) {
       Int oflags = VKI_O_CREAT|VKI_O_WRONLY|VKI_O_EXCL|VKI_O_TRUNC;
@@ -648,8 +647,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
    notelist = NULL;
 
    /* Second, work out their layout */
-   phdrs = VG_(arena_malloc)(VG_AR_CORE, "coredump-elf.mec.1", 
-                             sizeof(*phdrs) * num_phdrs);
+   phdrs = VG_(malloc)("coredump-elf.mec.1", sizeof(*phdrs) * num_phdrs);
 
    /* Add details for all threads except the one that faulted */
    for(i = 1; i < VG_N_THREADS; i++) {
@@ -700,7 +698,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
 	 continue;
 
       fill_phdr(&phdrs[idx], seg, off,
-                (seg->end - seg->start + off) < max_size);
+                (seg->end - seg->start + 1 + off) < max_size);
       
       off += phdrs[idx].p_filesz;
 
@@ -725,7 +723,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
       if (phdrs[idx].p_filesz > 0) {
 	 vg_assert(VG_(lseek)(core_fd, phdrs[idx].p_offset, VKI_SEEK_SET) 
                    == phdrs[idx].p_offset);
-	 vg_assert(seg->end - seg->start >= phdrs[idx].p_filesz);
+	 vg_assert(seg->end - seg->start + 1 >= phdrs[idx].p_filesz);
 
 	 (void)VG_(write)(core_fd, (void *)seg->start, phdrs[idx].p_filesz);
       }

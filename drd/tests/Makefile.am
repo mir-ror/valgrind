@@ -256,6 +256,7 @@ EXTRA_DIST =                                        \
 	std_thread.vgtest			    \
 	std_thread2.stderr.exp		  	    \
 	std_thread2.vgtest			    \
+	std_thread2.supp			    \
 	str_tester.stderr.exp		  	    \
 	str_tester.vgtest			    \
 	tc01_simple_race.stderr.exp                 \
@@ -467,6 +468,7 @@ annotate_smart_pointer_SOURCES = annotate_smart_pointer.cpp
 endif
 
 annotate_static_SOURCES     = annotate_static.cpp
+annotate_static_CXXFLAGS    = $(AM_CXXFLAGS) @FLAG_W_NO_UNUSED_FUNCTION@
 
 local_static_SOURCES        = local_static.cpp
 

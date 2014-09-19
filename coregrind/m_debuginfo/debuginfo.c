@@ -57,7 +57,6 @@
 #include "priv_tytypes.h"
 #include "priv_storage.h"
 #include "priv_readdwarf.h"
-#include "priv_readstabs.h"
 #if defined(VGO_linux)
 # include "priv_readelf.h"
 # include "priv_readdwarf3.h"
@@ -219,6 +218,7 @@ static void free_DebugInfo ( DebugInfo* di )
    vg_assert(di != NULL);
    if (di->fsm.maps)     VG_(deleteXA)(di->fsm.maps);
    if (di->fsm.filename) ML_(dinfo_free)(di->fsm.filename);
+   if (di->fsm.dbgname)  ML_(dinfo_free)(di->fsm.dbgname);
    if (di->soname)       ML_(dinfo_free)(di->soname);
    if (di->loctab)       ML_(dinfo_free)(di->loctab);
    if (di->loctab_fndn_ix) ML_(dinfo_free)(di->loctab_fndn_ix);
@@ -665,7 +665,7 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
       VG_(redir_notify_new_DebugInfo)( di );
       /* Note that we succeeded */
       di->have_dinfo = True;
-      tl_assert(di->handle > 0);
+      vg_assert(di->handle > 0);
       di_handle = di->handle;
 
    } else {
@@ -2037,7 +2037,7 @@ Bool VG_(lookup_symbol_SLOW)(const HChar* sopatt, HChar* name, SymAVMAs* avmas)
       }
       for (i = 0; i < si->symtab_used; i++) {
          HChar* pri_name = si->symtab[i].pri_name;
-         tl_assert(pri_name);
+         vg_assert(pri_name);
          if (0==VG_(strcmp)(name, pri_name)
              && (require_pToc ? GET_TOCPTR_AVMA(si->symtab[i].avmas) : True)) {
             *avmas = si->symtab[i].avmas;
@@ -2045,7 +2045,7 @@ Bool VG_(lookup_symbol_SLOW)(const HChar* sopatt, HChar* name, SymAVMAs* avmas)
          }
          HChar** sec_names = si->symtab[i].sec_names;
          if (sec_names) {
-            tl_assert(sec_names[0]);
+            vg_assert(sec_names[0]);
             while (*sec_names) {
                if (0==VG_(strcmp)(name, *sec_names)
                    && (require_pToc 
@@ -3750,8 +3750,8 @@ void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
       GXResult res;
       UWord sp_delta = res_sp_7k.word - res_sp_6k.word;
       UWord fp_delta = res_fp_7k.word - res_fp_6k.word;
-      tl_assert(sp_delta == 0 || sp_delta == 1024);
-      tl_assert(fp_delta == 0 || fp_delta == 1024);
+      vg_assert(sp_delta == 0 || sp_delta == 1024);
+      vg_assert(fp_delta == 0 || fp_delta == 1024);
 
       if (sp_delta == 0 && fp_delta == 0) {
          /* depends neither on sp nor fp, so it can't be a stack
@@ -3762,7 +3762,7 @@ void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
          regs.sp = regs.fp = 0;
          regs.ip = ip;
          res = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
-         tl_assert(res.kind == GXR_Addr);
+         vg_assert(res.kind == GXR_Addr);
          if (debug)
          VG_(printf)("   %5ld .. %5ld (sp) %s\n",
                      res.word, res.word + ((UWord)mul.ul) - 1, var->name);
@@ -3781,7 +3781,7 @@ void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
          regs.sp = regs.fp = 0;
          regs.ip = ip;
          res = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
-         tl_assert(res.kind == GXR_Addr);
+         vg_assert(res.kind == GXR_Addr);
          if (debug)
          VG_(printf)("   %5ld .. %5ld (FP) %s\n",
                      res.word, res.word + ((UWord)mul.ul) - 1, var->name);
@@ -3933,7 +3933,7 @@ void* /* really, XArray* of GlobalBlock */
 
    /* The first thing to do is find the DebugInfo that
       pertains to 'di_handle'. */
-   tl_assert(di_handle > 0);
+   vg_assert(di_handle > 0);
    for (di = debugInfo_list; di; di = di->next) {
       if (di->handle == di_handle)
          break;
@@ -3942,12 +3942,11 @@ void* /* really, XArray* of GlobalBlock */
    /* If this fails, we were unable to find any DebugInfo with the
       given handle.  This is considered an error on the part of the
       caller. */
-   tl_assert(di != NULL);
+   vg_assert(di != NULL);
 
    /* we'll put the collected variables in here. */
    gvars = VG_(newXA)( ML_(dinfo_zalloc), "di.debuginfo.dggbfd.1",
                        ML_(dinfo_free), sizeof(GlobalBlock) );
-   tl_assert(gvars);
 
    /* any var info at all? */
    if (!di->varinfo)
@@ -3963,13 +3962,13 @@ void* /* really, XArray* of GlobalBlock */
       DiAddrRange* range;
       OSet* /* of DiAddrInfo */ scope
          = *(OSet**)VG_(indexXA)( di->varinfo, scopeIx );
-      tl_assert(scope);
+      vg_assert(scope);
       VG_(OSetGen_ResetIter)(scope);
       while ( (range = VG_(OSetGen_Next)(scope)) ) {
 
          /* Iterate over each variable in the current address range */
          Word nVars, varIx;
-         tl_assert(range->vars);
+         vg_assert(range->vars);
          nVars = VG_(sizeXA)( range->vars );
          for (varIx = 0; varIx < nVars; varIx++) {
 
@@ -3979,7 +3978,7 @@ void* /* really, XArray* of GlobalBlock */
             GlobalBlock gb;
             TyEnt*      ty;
             DiVariable* var = VG_(indexXA)( range->vars, varIx );
-            tl_assert(var->name);
+            vg_assert(var->name);
             if (0) VG_(printf)("at depth %ld var %s ", scopeIx, var->name );
 
             /* Now figure out if this variable has a constant address
@@ -4026,8 +4025,8 @@ void* /* really, XArray* of GlobalBlock */
             if (arrays_only && !isVec) continue;
 
             /* Ok, so collect it! */
-            tl_assert(var->name);
-            tl_assert(di->soname);
+            vg_assert(var->name);
+            vg_assert(di->soname);
             if (0) VG_(printf)("XXXX %s %s %d\n", var->name,
                                ML_(fndn_ix2filename)(di, var->fndn_ix),
                                var->lineNo);
@@ -4037,8 +4036,8 @@ void* /* really, XArray* of GlobalBlock */
             gb.isVec = isVec;
             VG_(strncpy)(&gb.name[0], var->name, sizeof(gb.name)-1);
             VG_(strncpy)(&gb.soname[0], di->soname, sizeof(gb.soname)-1);
-            tl_assert(gb.name[ sizeof(gb.name)-1 ] == 0);
-            tl_assert(gb.soname[ sizeof(gb.soname)-1 ] == 0);
+            vg_assert(gb.name[ sizeof(gb.name)-1 ] == 0);
+            vg_assert(gb.soname[ sizeof(gb.soname)-1 ] == 0);
 
             VG_(addToXA)( gvars, &gb );
 

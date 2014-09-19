@@ -578,7 +578,6 @@ static AuxMapEnt* find_or_alloc_in_auxmap ( Addr a )
    a &= ~(Addr)0xFFFF;
 
    nyu = (AuxMapEnt*) VG_(OSetGen_AllocNode)( auxmap_L2, sizeof(AuxMapEnt) );
-   tl_assert(nyu);
    nyu->base = a;
    nyu->sm   = &sm_distinguished[SM_DIST_NOACCESS];
    VG_(OSetGen_Insert)( auxmap_L2, nyu );
@@ -1089,7 +1088,6 @@ static void init_gIgnoredAddressRanges ( void )
       return;
    gIgnoredAddressRanges = VG_(newRangeMap)( VG_(malloc), "mc.igIAR.1",
                                              VG_(free), IAR_NotIgnored );
-   tl_assert(gIgnoredAddressRanges != NULL);
 }
 
 INLINE Bool MC_(in_ignored_range) ( Addr a )
@@ -2414,7 +2412,6 @@ static void init_ocacheL2 ( void )
       = VG_(OSetGen_Create)( offsetof(OCacheLine,tag), 
                              NULL, /* fast cmp */
                              ocacheL2_malloc, "mc.ioL2", ocacheL2_free);
-   tl_assert(ocacheL2);
    stats__ocacheL2_n_nodes = 0;
 }
 
@@ -2450,7 +2447,6 @@ static void ocacheL2_add_line ( OCacheLine* line )
    OCacheLine* copy;
    tl_assert(is_valid_oc_tag(line->tag));
    copy = VG_(OSetGen_AllocNode)( ocacheL2, sizeof(OCacheLine) );
-   tl_assert(copy);
    *copy = *line;
    stats__ocacheL2_refs++;
    VG_(OSetGen_Insert)( ocacheL2, copy );
@@ -5367,11 +5363,12 @@ static void mc_print_usage(void)
 "                                            [definite,possible]\n"
 "    --errors-for-leak-kinds=kind1,kind2,..  which leak kinds are errors?\n"
 "                                            [definite,possible]\n"
-"        where kind is one of definite indirect possible reachable all none\n"
+"        where kind is one of:\n"
+"          definite indirect possible reachable all none\n"
 "    --leak-check-heuristics=heur1,heur2,... which heuristics to use for\n"
 "        improving leak search false positive [none]\n"
-"        where heur is one of stdstring length64 newarray\n"
-"                                multipleinheritance all none\n"
+"        where heur is one of:\n"
+"          stdstring length64 newarray multipleinheritance all none\n"
 "    --show-reachable=yes             same as --show-leak-kinds=all\n"
 "    --show-reachable=no --show-possibly-lost=yes\n"
 "                                     same as --show-leak-kinds=definite,possible\n"
@@ -5509,13 +5506,14 @@ static void print_monitor_help ( void )
 "                [increased*|changed|any]\n"
 "                [unlimited*|limited <max_loss_records_output>]\n"
 "            * = defaults\n"
-"       where kind is one of definite indirect possible reachable all none\n"
-"       where heur is one of stdstring length64 newarray\n"
-"                               multipleinheritance all none*\n"
-"        Examples: leak_check\n"
-"                  leak_check summary any\n"
-"                  leak_check full kinds indirect,possible\n"
-"                  leak_check full reachable any limited 100\n"
+"       where kind is one of:\n"
+"         definite indirect possible reachable all none\n"
+"       where heur is one of:\n"
+"         stdstring length64 newarray multipleinheritance all none*\n"
+"       Examples: leak_check\n"
+"                 leak_check summary any\n"
+"                 leak_check full kinds indirect,possible\n"
+"                 leak_check full reachable any limited 100\n"
 "  block_list <loss_record_nr>\n"
 "        after a leak search, shows the list of blocks of <loss_record_nr>\n"
 "  who_points_at <addr> [<len>]\n"

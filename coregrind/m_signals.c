@@ -1328,7 +1328,7 @@ void VG_(clear_out_queued_signals)( ThreadId tid, vki_sigset_t* saved_mask )
 {
    block_all_host_signals(saved_mask);
    if (VG_(threads)[tid].sig_queue != NULL) {
-      VG_(arena_free)(VG_AR_CORE, VG_(threads)[tid].sig_queue);
+      VG_(free)(VG_(threads)[tid].sig_queue);
       VG_(threads)[tid].sig_queue = NULL;
    }
    restore_all_host_signals(saved_mask);
@@ -1760,6 +1760,13 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
       }
    }
 
+   if (VG_(clo_vgdb) != Vg_VgdbNo
+       && VG_(dyn_vgdb_error) <= VG_(get_n_errs_shown)() + 1) {
+      /* Note: we add + 1 to n_errs_shown as the fatal signal was not
+         reported through error msg, and so was not counted. */
+      VG_(gdbserver_report_fatal_signal) (sigNo, tid);
+   }
+
    if (VG_(is_action_requested)( "Attach to debugger", & VG_(clo_db_attach) )) {
       VG_(start_debugger)( tid );
    }
@@ -2052,8 +2059,7 @@ void queue_signal(ThreadId tid, const vki_siginfo_t *si)
    block_all_host_signals(&savedmask);
 
    if (tst->sig_queue == NULL) {
-      tst->sig_queue = VG_(arena_malloc)(VG_AR_CORE, "signals.qs.1",
-                                         sizeof(*tst->sig_queue));
+      tst->sig_queue = VG_(malloc)("signals.qs.1", sizeof(*tst->sig_queue));
       VG_(memset)(tst->sig_queue, 0, sizeof(*tst->sig_queue));
    }
    sq = tst->sig_queue;

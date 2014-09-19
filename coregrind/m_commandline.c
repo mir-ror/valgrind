@@ -74,7 +74,6 @@ static HChar* read_dot_valgrindrc ( const HChar* dir )
           && (!(stat_buf.mode & VKI_S_IWOTH))) {
          if ( stat_buf.size > 0 ) {
             f_clo = VG_(malloc)("commandline.rdv.1", stat_buf.size+1);
-            vg_assert(f_clo);
             n = VG_(read)(sr_Res(fd), f_clo, stat_buf.size);
             if (n == -1) n = 0;
             vg_assert(n >= 0 && n <= stat_buf.size+1);
@@ -168,19 +167,16 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
 
    tmp_xarray = VG_(newXA)( VG_(malloc), "commandline.sua.1",
                             VG_(free), sizeof(HChar*) );
-   vg_assert(tmp_xarray);
 
    vg_assert( ! VG_(args_for_valgrind) );
    VG_(args_for_valgrind)
       = VG_(newXA)( VG_(malloc), "commandline.sua.2",
                     VG_(free), sizeof(HChar*) );
-   vg_assert( VG_(args_for_valgrind) );
 
    vg_assert( ! VG_(args_for_client) );
    VG_(args_for_client)
       = VG_(newXA)( VG_(malloc), "commandline.sua.3",
                     VG_(free), sizeof(HChar*) );
-   vg_assert( VG_(args_for_client) );
 
    /* Collect up the args-for-V. */
    i = 1; /* skip the exe (stage2) name. */

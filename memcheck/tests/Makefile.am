@@ -93,10 +93,9 @@ EXTRA_DIST = \
 		custom_alloc.stderr.exp-s390x-mvc \
 	custom-overlap.stderr.exp custom-overlap.vgtest \
 	deep-backtrace.vgtest deep-backtrace.stderr.exp \
-	deep_templates.vgtest \
-	deep_templates.stdout.exp deep_templates.stderr.exp \
 	demangle.stderr.exp demangle.vgtest \
 	describe-block.stderr.exp describe-block.vgtest \
+	descr_belowsp.vgtest descr_belowsp.stderr.exp \
 	doublefree.stderr.exp doublefree.vgtest \
 	dw4.vgtest dw4.stderr.exp dw4.stdout.exp \
 	err_disable1.vgtest err_disable1.stderr.exp \
@@ -299,6 +298,7 @@ check_PROGRAMS = \
 	clireq_nofill \
 	clo_redzone \
 	cond_ld_st \
+	descr_belowsp \
 	leak_cpp_interior \
 	custom_alloc \
 	custom-overlap \
@@ -375,10 +375,6 @@ if HAVE_PTHREAD_BARRIER
 check_PROGRAMS += reach_thread_register
 endif
 
-if HAVE_GSTABS
-check_PROGRAMS += deep_templates
-endif
-
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
@@ -395,13 +391,11 @@ endif
 
 leak_cpp_interior_SOURCES	= leak_cpp_interior.cpp
 
-deep_templates_SOURCES	= deep_templates.cpp
-deep_templates_CXXFLAGS	= $(AM_CFLAGS) -O -gstabs
-
 demangle_SOURCES = demangle.cpp
 
 dw4_CFLAGS		= $(AM_CFLAGS) -gdwarf-4 -fdebug-types-section
 
+descr_belowsp_LDADD     = -lpthread
 err_disable3_LDADD 	= -lpthread
 err_disable4_LDADD 	= -lpthread
 reach_thread_register_CFLAGS	= $(AM_CFLAGS) -O2
@@ -419,7 +413,7 @@ fprw_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
 inits_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
-inlinfo_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
+inlinfo_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@ @FLAG_W_NO_STATIC_LOCAL_IN_INLINE@
 
 inltemplate_SOURCES = inltemplate.cpp
 inltemplate_CXXFLAGS = $(AM_CXXFLAGS) @FLAG_W_NO_UNINITIALIZED@
