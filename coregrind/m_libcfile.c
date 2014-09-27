@@ -1,3 +1,4 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 
 /*--------------------------------------------------------------------*/
 /*--- File- and socket-related libc stuff.            m_libcfile.c ---*/
@@ -38,7 +39,7 @@
 #include "pub_core_libcprint.h"     // VG_(sprintf)
 #include "pub_core_libcproc.h"      // VG_(getpid), VG_(getppid)
 #include "pub_core_clientstate.h"   // VG_(fd_hard_limit)
-#include "pub_core_mallocfree.h"    // VG_(arena_realloc)
+#include "pub_core_mallocfree.h"    // VG_(realloc)
 #include "pub_core_syscall.h"
 
 /* IMPORTANT: on Darwin it is essential to use the _nocancel versions
@@ -1242,8 +1243,8 @@ const HChar *VG_(basename)(const HChar *path)
 
    SizeT need = end-p+1 + 1;
    if (need > buf_len) {
-     buf_len = (buf_len == 0) ? VKI_PATH_MAX : need;
-     buf = VG_(arena_realloc)(VG_AR_CORE, "basename", buf, buf_len);
+      buf_len = (buf_len == 0) ? 500 : need;
+      buf = VG_(arena_realloc)(VG_AR_CORE, "basename", buf, buf_len);
    }
    VG_(strncpy)(buf, p, end-p+1);
    buf[end-p+1] = '\0';
@@ -1289,8 +1290,8 @@ const HChar *VG_(dirname)(const HChar *path)
 
    SizeT need = p-path+1 + 1;
    if (need > buf_len) {
-     buf_len = (buf_len == 0) ? VKI_PATH_MAX : need;
-     buf = VG_(arena_realloc)(VG_AR_CORE, "dirname", buf, buf_len);
+      buf_len = (buf_len == 0) ? 500 : need;
+      buf = VG_(realloc)("dirname", buf, buf_len);
    }
    VG_(strncpy)(buf, path, p-path+1);
    buf[p-path+1] = '\0';
