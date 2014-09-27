@@ -1212,6 +1212,7 @@ Int VG_(setsockopt) ( Int sd, Int level, Int optname, void *optval,
 #  endif
 }
 
+
 const HChar *VG_(basename)(const HChar *path)
 {
    static HChar *buf = NULL;
@@ -1244,7 +1245,7 @@ const HChar *VG_(basename)(const HChar *path)
    SizeT need = end-p+1 + 1;
    if (need > buf_len) {
       buf_len = (buf_len == 0) ? 500 : need;
-      buf = VG_(arena_realloc)(VG_AR_CORE, "basename", buf, buf_len);
+      buf = VG_(realloc)("basename", buf, buf_len);
    }
    VG_(strncpy)(buf, p, end-p+1);
    buf[end-p+1] = '\0';
