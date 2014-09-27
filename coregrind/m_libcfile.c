@@ -471,7 +471,7 @@ Bool VG_(record_startup_wd) ( void )
      if (wd == NULL)
         return False;
      SizeT need = VG_(strlen)(wd) + 1;
-     startup_wd = VG_(malloc)(VG_AR_CORE, "startup_wd", need);
+     startup_wd = VG_(malloc)("startup_wd", need);
      VG_(strcpy)(startup_wd, wd);
      startup_wd_acquired = True;
      return True;
