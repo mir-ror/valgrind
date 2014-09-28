@@ -105,16 +105,13 @@ static Bool match_executable(const HChar *entry)
    // matching non-executable we remember it but keep looking for an
    // matching executable later in the path.
    if (VG_(access)(buf, True/*r*/, False/*w*/, True/*x*/) == 0) {
-      if (executable_name_out)
-        VG_(arena_free)(VG_AR_CORE, executable_name_out);
-      executable_name_out =
-        VG_(arena_strdup)(VG_AR_CORE, "match_executable", buf);
+      VG_(free)(executable_name_out);
+      executable_name_out = VG_(strdup)("match_executable", buf);
       return True;      // Stop looking
    } else if (VG_(access)(buf, True/*r*/, False/*w*/, False/*x*/) == 0 
               && executable_name_out == NULL)
    {
-      executable_name_out =
-        VG_(arena_strdup)(VG_AR_CORE, "match_executable", buf);
+      executable_name_out = VG_(strdup)("match_executable", buf);
       return False;     // Keep looking
    } else { 
       return False;     // Keep looking
@@ -136,6 +133,8 @@ const HChar* ML_(find_executable) ( const HChar* exec )
 
    // No '/' - we need to search the path
    HChar* path = VG_(getenv)("PATH");
+
+   VG_(free)(executable_name_out);
 
    executable_name_in  = exec;
    executable_name_out = NULL;
