@@ -532,7 +532,9 @@ Int VG_(getegid) ( void )
 /* Get supplementary groups into list[0 .. size-1].  Returns the
    number of groups written, or -1 if error.  Note that in order to be
    portable, the groups are 32-bit unsigned ints regardless of the
-   platform. */
+   platform. 
+   As a special case, if size == 0 the function returns the number of
+   groups leaving list untouched. */
 Int VG_(getgroups)( Int size, UInt* list )
 {
    if (size < 0) return -1;
@@ -545,8 +547,10 @@ Int VG_(getgroups)( Int size, UInt* list )
    sres = VG_(do_syscall2)(__NR_getgroups, size, (Addr)list16);
    if (sr_isError(sres))
       return -1;
-   for (i = 0; i < sr_Res(sres); i++)
-      list[i] = (UInt)list16[i];
+   if (size != 0) {
+      for (i = 0; i < sr_Res(sres); i++)
+         list[i] = (UInt)list16[i];
+   }
    return sr_Res(sres);
 
 #  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux) \

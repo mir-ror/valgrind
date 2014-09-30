@@ -658,15 +658,16 @@ Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
 	 grpmatch = 1;
       else {
          UInt *groups = NULL;
-         Int   ngrp, groups_size = 0;
-         do {
-            groups_size += 32;
-            groups = VG_(arena_realloc)(VG_AR_CORE, "check_executable",
-                                        groups, groups_size);
-            ngrp = VG_(getgroups)(groups_size, groups);
-            if (ngrp == -1) break;  // failed
-         } while (ngrp == groups_size);
-	 Int i;
+         Int   ngrp;
+
+         /* Find out # groups, allocate large enough array and fetch groups */
+         ngrp = VG_(getgroups)(0, NULL);
+         if (ngrp != -1) {
+            groups = VG_(malloc)("check_executable", ngrp * sizeof *groups);
+            ngrp   = VG_(getgroups)(ngrp, groups);
+         }
+
+         Int i;
          /* ngrp will be -1 if VG_(getgroups) failed. */
          for (i = 0; i < ngrp; i++) {
 	    if (groups[i] == st.gid) {
@@ -674,7 +675,7 @@ Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
 	       break;
 	    }
          }
-         if (groups) VG_(free)(groups);
+         VG_(free)(groups);
       }
 
       if (grpmatch) {
