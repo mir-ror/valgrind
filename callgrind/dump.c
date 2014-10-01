@@ -1521,9 +1521,8 @@ void init_cmdbuf(void)
      size += 1;   // separator ' '
      size += VG_(strlen)(arg);
   }
-  size += 1;   // '\0'
 
-  cmdbuf = CLG_MALLOC("cl.dump.ic.1", size);
+  cmdbuf = CLG_MALLOC("cl.dump.ic.1", size + 1);  // +1 for '\0'
 
   /* Pass #2: Build up the string */
   size = VG_(sprintf)(cmdbuf, " %s", VG_(args_the_exename));
