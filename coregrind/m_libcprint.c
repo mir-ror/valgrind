@@ -227,8 +227,8 @@ UInt VG_(sprintf) ( HChar* buf, const HChar *format, ... )
 
 /* --------- snprintf --------- */
 
-/* The behaviour of VG_(snprintf) and VG_(vsnprintf) differs from the
-   semantics defined in C99. Let S be the size of the buffer as given in
+/* The return value of VG_(snprintf) and VG_(vsnprintf) differs from
+   what is defined in C99. Let S be the size of the buffer as given in
    the 2nd argument.
    Return value R:
      R < S:  The output string was successfully written to the buffer.
