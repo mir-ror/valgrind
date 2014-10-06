@@ -1516,6 +1516,7 @@ SizeT MC_(get_extra_suppression_info) ( Error* err,
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
    tl_assert(buf);
+   tl_assert(nBuf >= 1);
 
    if (Err_RegParam == ekind || Err_MemParam == ekind) {
       const HChar* errstr = VG_(get_error_string)(err);
@@ -1539,6 +1540,8 @@ SizeT MC_(get_extra_suppression_info) ( Error* err,
 SizeT MC_(print_extra_suppression_use) ( Supp *su,
                                          /*OUT*/HChar *buf, Int nBuf )
 {
+   tl_assert(nBuf >= 1);
+
    if (VG_(get_supp_kind)(su) == LeakSupp) {
       MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
 

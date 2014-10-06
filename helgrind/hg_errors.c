@@ -1311,6 +1311,7 @@ Bool HG_(error_matches_suppression) ( Error* err, Supp* su )
 SizeT HG_(get_extra_suppression_info) ( Error* err,
                                        /*OUT*/HChar* buf, Int nBuf )
 {
+   tl_assert(nBuf >= 1);
    /* Do nothing */
    buf[0] = '\0';
    return 0;
@@ -1319,6 +1320,7 @@ SizeT HG_(get_extra_suppression_info) ( Error* err,
 SizeT HG_(print_extra_suppression_use) ( Supp* su,
                                         /*OUT*/HChar* buf, Int nBuf )
 {
+   tl_assert(nBuf >= 1);
    /* Do nothing */
    buf[0] = '\0';
    return 0;

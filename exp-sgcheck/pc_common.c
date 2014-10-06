@@ -780,6 +780,7 @@ SizeT pc_get_extra_suppression_info ( Error* err,
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
    tl_assert(buf);
+   tl_assert(nBuf >= 1);
 
    if (XE_SysParam == ekind) {
       const HChar* errstr = VG_(get_error_string)(err);
@@ -794,6 +795,7 @@ SizeT pc_get_extra_suppression_info ( Error* err,
 SizeT pc_print_extra_suppression_use ( Supp* su,
                                        /*OUT*/HChar* buf, Int nBuf )
 {
+   tl_assert(nBuf >= 1);
    buf[0] = '\0';
    return 0;
 }

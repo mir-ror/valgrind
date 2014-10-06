@@ -602,6 +602,7 @@ static
 SizeT drd_get_extra_suppression_info(Error* e,
                                      /*OUT*/HChar* buf, Int nBuf)
 {
+   tl_assert(nBuf >= 1);
    buf[0] = '\0';
    return 0;
 }
@@ -610,6 +611,7 @@ static
 SizeT drd_print_extra_suppression_use(Supp* su,
                                       /*OUT*/HChar* buf, Int nBuf)
 {
+   tl_assert(nBuf >= 1);
    buf[0] = '\0';
    return 0;
 }
