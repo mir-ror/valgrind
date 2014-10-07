@@ -229,8 +229,8 @@ struct _Supp {
    Int count;     // The number of times this error has been suppressed.
    HChar* sname;  // The name by which the suppression is referred to.
 
-   // Index in VG_(clo_suppressions).names giving filename from which
-   // suppression was read, and the lineno in this file where sname was read.
+   // Index in VG_(clo_suppressions) giving filename from which suppression
+   // was read, and the lineno in this file where sname was read.
    Int    clo_suppressions_i;
    Int    sname_lineno;
 
@@ -957,8 +957,10 @@ static Bool show_used_suppressions ( void )
          // Ensure buffer is properly terminated
          vg_assert(xtra[num_written] == '\0');
 
+         HChar *filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                   su->clo_suppressions_i);
          VG_(dmsg)("used_suppression: %6d %s %s:%d%s%s\n", su->count, su->sname,
-                   VG_(clo_suppressions).names[su->clo_suppressions_i],
+                   filename,
                    su->sname_lineno,
                    num_written ? " " : "", xtra);
          VG_(free)(xtra);
@@ -1253,13 +1255,14 @@ static Bool tool_name_present(const HChar *name, HChar *names)
 }
 
 /* Read suppressions from the file specified in 
-   VG_(clo_suppressions).names[clo_suppressions_i]
+   VG_(clo_suppressions)[clo_suppressions_i]
    and place them in the suppressions list.  If there's any difficulty
    doing this, just give up -- there's no point in trying to recover.  
 */
 static void load_one_suppressions_file ( Int clo_suppressions_i )
 {
-   const HChar* filename = VG_(clo_suppressions).names[clo_suppressions_i];
+   const HChar* filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                   clo_suppressions_i);
    SysRes sres;
    Int    fd, i, j, lineno = 0;
    Bool   got_a_location_line_read_by_tool;
@@ -1466,10 +1469,10 @@ void VG_(load_suppressions) ( void )
 {
    Int i;
    suppressions = NULL;
-   for (i = 0; i < VG_(clo_suppressions).n_used; i++) {
+   for (i = 0; i < VG_(sizeXA)(VG_(clo_suppressions)); i++) {
       if (VG_(clo_verbosity) > 1) {
          VG_(dmsg)("Reading suppressions file: %s\n", 
-                   VG_(clo_suppressions).names[i] );
+                   *(HChar**) VG_(indexXA)(VG_(clo_suppressions), i));
       }
       load_one_suppressions_file( i );
    }
@@ -1598,12 +1601,14 @@ static void clearIPtoFunOrObjCompleter ( Supp  *su,
                                          IPtoFunOrObjCompleter* ip2fo)
 {
    if (DEBUG_ERRORMGR || VG_(debugLog_getLevel)() >= 4) {
-      if (su)
+      if (su) {
+         HChar *filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                   su->clo_suppressions_i);
          VG_(dmsg)("errormgr matching end suppression %s  %s:%d matched:\n",
                    su->sname,
-                   VG_(clo_suppressions).names[su->clo_suppressions_i],
+                   filename,
                    su->sname_lineno);
-      else
+      } else
          VG_(dmsg)("errormgr matching end no suppression matched:\n");
       VG_(pp_StackTrace) (ip2fo->ips, ip2fo->n_ips);
       pp_ip2fo(ip2fo);
@@ -1861,11 +1866,14 @@ static Bool supp_matches_callers(IPtoFunOrObjCompleter* ip2fo, Supp* su)
    UWord      n_supps  = su->n_callers;
    UWord      szbPatt  = sizeof(SuppLoc);
    Bool       matchAll = False; /* we just want to match a prefix */
-   if (DEBUG_ERRORMGR)
+   if (DEBUG_ERRORMGR) {
+      HChar *filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                su->clo_suppressions_i);
       VG_(dmsg)("   errormgr Checking match with  %s  %s:%d\n",
                 su->sname,
-                VG_(clo_suppressions).names[su->clo_suppressions_i],
+                filename,
                 su->sname_lineno);
+   }
    return
       VG_(generic_match)(
          matchAll,

@@ -37,12 +37,7 @@
 // other module imports this one, if only for VG_(clo_verbosity).
 //--------------------------------------------------------------------
 #include "pub_tool_options.h"
-
-typedef struct {
-   const HChar **names;
-   UInt  n_used;
-   UInt  n_allocated;
-} ArrayOfStrings;
+#include "pub_core_xarray.h"
 
 /* Should we stop collecting errors if too many appear?  default: YES */
 extern Bool  VG_(clo_error_limit);
@@ -134,10 +129,10 @@ extern Int   VG_(clo_input_fd);
 extern Bool  VG_(clo_default_supp);
 
 /* The names of the suppression files. */
-extern ArrayOfStrings VG_(clo_suppressions);
+extern XArray *VG_(clo_suppressions);
 
 /* An array of strings harvested from --fullpath-after= flags. */
-extern ArrayOfStrings VG_(clo_fullpath_after);
+extern XArray *VG_(clo_fullpath_after);
 
 /* Full path to additional path to search for debug symbols */
 extern const HChar* VG_(clo_extra_debuginfo_path);
@@ -271,7 +266,7 @@ extern const HChar* VG_(clo_prefix_to_strip);
    silently with the un-marked-up library.  Note that you should put
    the entire flag in quotes to stop shells messing up the * and ?
    wildcards. */
-extern ArrayOfStrings VG_(clo_req_tsyms);
+extern XArray *VG_(clo_req_tsyms);
 
 /* Track open file descriptors? */
 extern Bool  VG_(clo_track_fds);

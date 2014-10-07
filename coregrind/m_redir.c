@@ -1578,17 +1578,15 @@ static void handle_require_text_symbols ( DebugInfo* di )
       frequently be used.  Work through the list of specs and
       accumulate in fnpatts[] the fn patterns that pertain to this
       object. */
-   ArrayOfStrings fnpatts;
+   XArray *fnpatts = VG_(newXA)( VG_(malloc), "m_redir.hrts.5",
+                                 VG_(free), sizeof(HChar*) );
+
    Int    i, j;
    const HChar* di_soname = VG_(DebugInfo_get_soname)(di);
    vg_assert(di_soname); // must be present
 
-   fnpatts.n_used = 0;
-   fnpatts.n_allocated = VG_(clo_req_tsyms).n_used;
-   fnpatts.names = VG_(malloc)("m_redir.hrts.3", fnpatts.n_allocated);
-
-   for (i = 0; i < VG_(clo_req_tsyms).n_used; i++) {
-      const HChar* clo_spec = VG_(clo_req_tsyms).names[i];
+   for (i = 0; i < VG_(sizeXA)(VG_(clo_req_tsyms)); i++) {
+      const HChar* clo_spec = *(HChar**) VG_(indexXA)(VG_(clo_req_tsyms), i);
       vg_assert(clo_spec && VG_(strlen)(clo_spec) >= 4);
       // clone the spec, so we can stick a zero at the end of the sopatt
       HChar *spec = VG_(strdup)("m_redir.hrts.1", clo_spec);
@@ -1600,31 +1598,35 @@ static void handle_require_text_symbols ( DebugInfo* di )
       vg_assert(fnpatt && *fnpatt == sep);
       *fnpatt = 0;
       fnpatt++;
-      if (VG_(string_match)(sopatt, di_soname))
-         fnpatts.names[fnpatts.n_used++]
-            = VG_(strdup)("m_redir.hrts.2", fnpatt);
+      if (VG_(string_match)(sopatt, di_soname)) {
+         HChar *pattern = VG_(strdup)("m_redir.hrts.2", fnpatt);
+         VG_(addToXA)(fnpatts, &pattern);
+      }
       VG_(free)(spec);
    }
 
-   if (fnpatts.n_used == 0)
+   if (VG_(sizeXA)(fnpatts) == 0) {
+      VG_(deleteXA)(fnpatts);
       return;  /* no applicable spec strings */
+   }
 
-   /* So finally, fnpatts[0 .. fnpatts_used - 1] contains the set of
+   /* So finally, fnpatts contains the set of
       (patterns for) text symbol names that must be found in this
       object, in order to continue.  That is, we must find at least
       one text symbol name that matches each pattern, else we must
       abort the run. */
 
    if (0) VG_(printf)("for %s\n", di_soname);
-   for (i = 0; i < fnpatts.n_used; i++)
-      if (0) VG_(printf)("   fnpatt: %s\n", fnpatts.names[i]);
+   for (i = 0; i < VG_(sizeXA)(fnpatts); i++)
+      if (0) VG_(printf)("   fnpatt: %s\n",
+                         *(HChar**) VG_(indexXA)(fnpatts, i));
 
    /* For each spec, look through the syms to find one that matches.
       This isn't terribly efficient but it happens rarely, so no big
       deal. */
-   for (i = 0; i < fnpatts.n_used; i++) {
+   for (i = 0; i < VG_(sizeXA)(fnpatts); i++) {
       Bool   found  = False;
-      const HChar* fnpatt = fnpatts.names[i];
+      const HChar* fnpatt = *(HChar**) VG_(indexXA)(fnpatts, i);
       Int    nsyms  = VG_(DebugInfo_syms_howmany)(di);
       for (j = 0; j < nsyms; j++) {
          Bool    isText        = False;
@@ -1675,8 +1677,7 @@ static void handle_require_text_symbols ( DebugInfo* di )
    }
 
    /* All required specs were found.  Just free memory and return. */
-   for (i = 0; i < fnpatts.n_used; i++)
-     VG_(free)((HChar *)fnpatts.names[i]);
+   VG_(deleteXA)(fnpatts);
 }
 
 

@@ -393,16 +393,6 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
    }
 }
 
-static void
-maybe_resize_array_of_strings(ArrayOfStrings *aos, UInt amount)
-{
-   if (aos->n_used == aos->n_allocated) {
-      aos->n_allocated += amount;
-      aos->names = VG_(realloc)("clo", aos->names, aos->n_allocated);
-   }
-}
-
-
 /* The main processing for command line options.  See comments above
    on early_process_cmd_line_options.
 
@@ -467,6 +457,13 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                             "./configure --prefix=... or --libdir=...\n");
 
    vg_assert( VG_(args_for_valgrind) );
+
+   VG_(clo_suppressions) = VG_(newXA)(VG_(malloc), "main.mpclo.4",
+                                      VG_(free), sizeof(HChar *));
+   VG_(clo_fullpath_after) = VG_(newXA)(VG_(malloc), "main.mpclo.5",
+                                        VG_(free), sizeof(HChar *));
+   VG_(clo_req_tsyms) = VG_(newXA)(VG_(malloc), "main.mpclo.6",
+                                   VG_(free), sizeof(HChar *));
 
    /* BEGIN command-line processing loop */
 
@@ -722,13 +719,11 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                           VG_(clo_default_supp)) { }
 
       else if VG_STR_CLO(arg, "--suppressions", tmp_str) {
-         maybe_resize_array_of_strings(&VG_(clo_suppressions), 10);
-         VG_(clo_suppressions).names[VG_(clo_suppressions).n_used++] = tmp_str;
+         VG_(addToXA)(VG_(clo_suppressions), &tmp_str);
       }
 
       else if VG_STR_CLO (arg, "--fullpath-after", tmp_str) {
-         maybe_resize_array_of_strings(&VG_(clo_fullpath_after), 10);
-         VG_(clo_fullpath_after).names[VG_(clo_fullpath_after).n_used++] = tmp_str;
+         VG_(addToXA)(VG_(clo_fullpath_after), &tmp_str);
       }
 
       else if VG_STR_CLO (arg, "--extra-debuginfo-path",
@@ -755,8 +750,7 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
             VG_(fmsg_bad_option)(arg,
                "Invalid --require-text-symbol= specification.\n");
          }
-         maybe_resize_array_of_strings(&VG_(clo_req_tsyms), 10);
-         VG_(clo_req_tsyms).names[VG_(clo_req_tsyms).n_used++] = tmp_str;
+         VG_(addToXA)(VG_(clo_req_tsyms), &tmp_str);
       }
 
       /* "stuvwxyz" --> stuvwxyz (binary) */
@@ -1144,8 +1138,7 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       Int len = VG_(strlen)(VG_(libdir)) + 1 + sizeof(default_supp);
       HChar *buf = VG_(malloc)("main.mpclo.3", len);
       VG_(sprintf)(buf, "%s/%s", VG_(libdir), default_supp);
-      maybe_resize_array_of_strings(&VG_(clo_suppressions), 10);
-      VG_(clo_suppressions).names[VG_(clo_suppressions).n_used++] = buf;
+      VG_(addToXA)(VG_(clo_suppressions), &buf);
    }
 
    *logging_to_fd = log_to == VgLogTo_Fd || log_to == VgLogTo_Socket;
