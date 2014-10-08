@@ -51,7 +51,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <limits.h>             // PATH_MAX
 
 #ifndef EM_X86_64
 #define EM_X86_64 62    // elf.h doesn't define this on some older systems
@@ -394,7 +393,7 @@ int main(int argc, char** argv, char** envp)
    char *buf = NULL;
 
    while (42) {
-      bufsiz += PATH_MAX;
+      bufsiz += 500;
       buf = realloc(buf, bufsiz);
       if (buf == NULL)
          barf("realloc of buf failed.");
