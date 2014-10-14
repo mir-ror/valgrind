@@ -79,13 +79,35 @@ Int VG_(safe_fd)(Int oldfd)
 Bool VG_(resolve_filename) ( Int fd, HChar** result )
 {
 #  if defined(VGO_linux)
+   static HChar *buf = NULL;
+   static SizeT  bufsiz = 0;
+
+   if (buf == NULL) {   // first time
+      bufsiz = 500;
+      buf = VG_(malloc)("resolve_filename", bufsiz);
+   }
+
    HChar tmp[64];   // large enough
    VG_(sprintf)(tmp, "/proc/self/fd/%d", fd);
 
-   if (VG_(readlink)(tmp, result) > 0 && (*result)[0] == '/')
+   while (42) {
+      SSizeT res = VG_(readlink)(tmp, buf, bufsiz);
+      if (res < 0) break;
+      if (res == bufsiz) {  // buffer too small; increase and retry
+         bufsiz += 500;
+         buf = VG_(realloc)("resolve_filename", buf, bufsiz);
+         continue;
+      }
+      vg_assert(bufsiz > res);  // paranoia
+      if (buf[0] != '/') break;
+
+      buf[res] = '\0';
+      *result = buf;
       return True;
-   else
-      return False;
+   }
+   // Failure
+   *result = NULL;
+   return False;
 
 #  elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
@@ -93,12 +115,13 @@ Bool VG_(resolve_filename) ( Int fd, HChar** result )
       static HChar *buf = NULL;
 
       if (buf == NULL) 
-         buf = VG_(arena_malloc)(VG_AR_CORE, VKI_MAXPATHLEN+1);
+         buf = VG_(malloc)("resolve_filename", VKI_MAXPATHLEN+1);
       VG_(strcpy)( buf, tmp );
 
       *result = buf;
-      if (result[0] == '/') return True;
+      if (buf[0] == '/') return True;
    }
+   // Failure
    *result = NULL;
    return False;
 
@@ -514,51 +537,21 @@ SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout)
 }
 
 
-/* Perform the readlink operation on path. Upon successful completion
-   *result points to a dynamically allocated buffer that contains the
-   untruncated contents of the symbolic link. The string is properly
-   terminated with '\0'. The return value is the number of characters
-   written to that buffer not counting the terminating '\0' character.
-   This buffer will be overwritten in the next invocation so callers
-   need to copy the result if needed.
-   If the operation fails, the function returns -1 and *result is NULL. */
-Int VG_(readlink) (const HChar* path, HChar** result)
+/* Performs the readlink operation and puts the result into 'buf'.
+   Note, that the string in 'buf' is *not* null-terminated. The function
+   returns the number of characters put into 'buf' or -1 if an error
+   occurred. */
+SSizeT VG_(readlink) (const HChar* path, HChar* buf, SizeT bufsiz)
 {
    SysRes res;
-   static HChar *buf = NULL;
-   static UInt bufsiz = 0;
-
-   if (buf == NULL) {          // 1st time
-      bufsiz = VKI_PATH_MAX;
-      buf = VG_(arena_malloc)(VG_AR_CORE, "readlink", bufsiz);
-   }
-
-   while (42) {
+   /* res = readlink( path, buf, bufsiz ); */
 #  if defined(VGP_arm64_linux)
-      res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
+   res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                            (UWord)path, (UWord)buf, bufsiz);
 #  else
-      res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
+   res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
 #  endif
-      if (sr_isError(res)) {
-         *result = NULL;
-         return -1;
-      }
-      UInt num_char_written = sr_Res(res);
-
-      if (num_char_written == bufsiz) {
-         // Buffer was too small. Increase size and retry.
-         bufsiz += VKI_PATH_MAX;
-         buf = VG_(arena_realloc)(VG_AR_CORE, "readlink", buf, bufsiz);
-         continue;
-      }
-
-      vg_assert(num_char_written < bufsiz);    // paranoia
-
-      buf[num_char_written] = '\0';    // properly terminate
-      *result = buf;
-      return num_char_written;
-   }
+   return sr_isError(res) ? -1 : sr_Res(res);
 }
 
 #if defined(VGO_linux)

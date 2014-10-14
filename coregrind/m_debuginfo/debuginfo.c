@@ -1119,16 +1119,10 @@ void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
    obj_mtime = stat_buf.mtime;
 
    /* and get its name into exename. */
-   HChar tmp[64];   // large enough
-   VG_(sprintf)(tmp, "/proc/self/fd/%d", fd_obj);
-
-   /* convert tmp from a symlink to real name */
    HChar *exe;
-   sz_exename = VG_(readlink)(tmp, &exe);
-
-   if (sz_exename == -1)
-      return; /* readlink failed ?! */
-
+   if (! VG_(resolve_filename)(fd_obj, &exe))
+      return; /*  failed */
+   sz_exename = VG_(strlen)(exe);
    HChar exename[sz_exename + 1];
    VG_(strcpy)(exename, exe);  // make a copy on the stack 
 
