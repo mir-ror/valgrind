@@ -387,7 +387,7 @@ void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, HChar buf[])
       // Have to generate the format string in order to be flexible about
       // the width of the post-decimal-point part.
       VG_(sprintf)(fmt, "%%llu.%%0%ullu%%%%", d);
-      // fmt is now "%lld.%0<d>lld%%" where <d> is 1,2,3...
+      // fmt is now "%llu.%0<d>llu%%" where <d> is 1,2,3...
       VG_(sprintf)(buf, fmt, p1, p2);   // FIXME: unsafe
    }
 
