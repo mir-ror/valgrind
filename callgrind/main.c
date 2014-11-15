@@ -1482,6 +1482,7 @@ static void dump_state_of_thread_togdb(thread_info* ti)
     Int t, i;
     BBCC *from, *to;
     call_entry* ce;
+    HChar *mcost;
 
     t = CLG_(current_tid);
     CLG_(init_cost_lz)( CLG_(sets).full, &sum );
@@ -1489,8 +1490,9 @@ static void dump_state_of_thread_togdb(thread_info* ti)
     CLG_(add_diff_cost)( CLG_(sets).full, sum, ti->lastdump_cost,
 			 ti->states.entry[0]->cost);
     CLG_(copy_cost)( CLG_(sets).full, ti->lastdump_cost, tmp );
-    VG_(gdb_printf)("events-%d: %s\n", t,
-                    CLG_(mappingcost_as_string)(CLG_(dumpmap), sum));
+    mcost = CLG_(mappingcost_as_string)(CLG_(dumpmap), sum);
+    VG_(gdb_printf)("events-%d: %s\n", t, mcost);
+    VG_(free)(mcost);
     VG_(gdb_printf)("frames-%d: %d\n", t, CLG_(current_call_stack).sp);
 
     ce = 0;
@@ -1510,8 +1512,9 @@ static void dump_state_of_thread_togdb(thread_info* ti)
 			  ce->enter_cost, CLG_(current_state).cost );
       CLG_(copy_cost)( CLG_(sets).full, ce->enter_cost, tmp );
       
-      VG_(gdb_printf)("events-%d-%d: %s\n",t, i,
-                      CLG_(mappingcost_as_string)(CLG_(dumpmap), sum));
+      mcost = CLG_(mappingcost_as_string)(CLG_(dumpmap), sum);
+      VG_(gdb_printf)("events-%d-%d: %s\n",t, i, mcost);
+      VG_(free)(mcost);
     }
     if (ce && ce->jcc) {
       to = ce->jcc->to;
@@ -1538,8 +1541,9 @@ static void dump_state_togdb(void)
     VG_(gdb_printf)("distinct-contexts: %d\n", CLG_(stat).distinct_contexts);
 
     /* "events:" line. Given here because it will be dynamic in the future */
-    VG_(gdb_printf)("events: %s\n",
-                    CLG_(eventmapping_as_string)(CLG_(dumpmap)));
+    HChar *evmap = CLG_(eventmapping_as_string)(CLG_(dumpmap));
+    VG_(gdb_printf)("events: %s\n", evmap);
+    VG_(free)(evmap);
     /* "part:" line (number of last part. Is 0 at start */
     VG_(gdb_printf)("part: %d\n", CLG_(get_dump_counter)());
 		
@@ -1550,6 +1554,7 @@ static void dump_state_togdb(void)
 	if (!th[t]) continue;
 	VG_(gdb_printf)(" %d", t);
     }
+    VG_(gdb_printf)("\n");
     VG_(gdb_printf)("current-tid: %d\n", orig_tid);
     CLG_(forall_threads)(dump_state_of_thread_togdb);
 }
@@ -1771,7 +1776,7 @@ static
 void branchsim_printstat(int l1, int l2, int l3)
 {
     static HChar buf1[128], buf2[128], buf3[128];
-    static HChar fmt[128];
+    static HChar fmt[128];    // large enough
     FullCost total;
     ULong Bc_total_b, Bc_total_mp, Bi_total_b, Bi_total_mp;
     ULong B_total_b, B_total_mp;
@@ -1903,10 +1908,12 @@ void finish(void)
     VG_(message)(Vg_DebugMsg, "\n");
   }
 
-  VG_(message)(Vg_UserMsg, "Events    : %s\n",
-               CLG_(eventmapping_as_string)(CLG_(dumpmap)));
-  VG_(message)(Vg_UserMsg, "Collected : %s\n",
-               CLG_(mappingcost_as_string)(CLG_(dumpmap), CLG_(total_cost)));
+  HChar *evmap = CLG_(eventmapping_as_string)(CLG_(dumpmap));
+  VG_(message)(Vg_UserMsg, "Events    : %s\n", evmap);
+  VG_(free)(evmap);
+  HChar *mcost = CLG_(mappingcost_as_string)(CLG_(dumpmap), CLG_(total_cost));
+  VG_(message)(Vg_UserMsg, "Collected : %s\n", mcost);
+  VG_(free)(mcost);
   VG_(message)(Vg_UserMsg, "\n");
 
   /* determine value widths for statistics */

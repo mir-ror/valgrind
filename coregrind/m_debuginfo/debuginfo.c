@@ -1,4 +1,4 @@
-
+/* -*- mode: C; c-basic-offset: 3; -*- */
 
 /*--------------------------------------------------------------------*/
 /*--- Top level management of symbols and debugging information.   ---*/
@@ -108,9 +108,6 @@
 
 static UInt CF_info_generation = 0;
 static void cfsi_m_cache__invalidate ( void );
-static void grow_buffer(HChar **buf, SizeT *size, SizeT need);
-static void grow_buffer_for_string(HChar **buf, SizeT *size,
-                                   const HChar *string);
 
 
 /*------------------------------------------------------------*/
@@ -190,7 +187,7 @@ DebugInfo* alloc_DebugInfo( const HChar* filename )
    di->fsm.filename = ML_(dinfo_strdup)("di.debuginfo.aDI.2", filename);
    di->fsm.maps     = VG_(newXA)(
                          ML_(dinfo_zalloc), "di.debuginfo.aDI.3",
-                         ML_(dinfo_free), sizeof(struct _DebugInfoMapping));
+                         ML_(dinfo_free), sizeof(DebugInfoMapping));
 
    /* Everything else -- pointers, sizes, arrays -- is zeroed by
       ML_(dinfo_zalloc).  Now set up the debugging-output flags. */
@@ -405,15 +402,15 @@ static Bool ranges_overlap (Addr s1, SizeT len1, Addr s2, SizeT len2 )
 
 
 /* Do the basic mappings of the two DebugInfos overlap in any way? */
-static Bool do_DebugInfos_overlap ( DebugInfo* di1, DebugInfo* di2 )
+static Bool do_DebugInfos_overlap ( const DebugInfo* di1, const DebugInfo* di2 )
 {
    Word i, j;
    vg_assert(di1);
    vg_assert(di2);
    for (i = 0; i < VG_(sizeXA)(di1->fsm.maps); i++) {
-      struct _DebugInfoMapping* map1 = VG_(indexXA)(di1->fsm.maps, i);
+      const DebugInfoMapping* map1 = VG_(indexXA)(di1->fsm.maps, i);
       for (j = 0; j < VG_(sizeXA)(di2->fsm.maps); j++) {
-         struct _DebugInfoMapping* map2 = VG_(indexXA)(di2->fsm.maps, j);
+         const DebugInfoMapping* map2 = VG_(indexXA)(di2->fsm.maps, j);
          if (ranges_overlap(map1->avma, map1->size, map2->avma, map2->size))
             return True;
       }
@@ -470,7 +467,7 @@ static void discard_DebugInfos_which_overlap_with ( DebugInfo* diRef )
 /* Find the existing DebugInfo for |filename| or if not found, create
    one.  In the latter case |filename| is strdup'd into VG_AR_DINFO,
    and the new DebugInfo is added to debugInfo_list. */
-static DebugInfo* find_or_create_DebugInfo_for ( HChar* filename )
+static DebugInfo* find_or_create_DebugInfo_for ( const HChar* filename )
 {
    DebugInfo* di;
    vg_assert(filename);
@@ -493,7 +490,7 @@ static DebugInfo* find_or_create_DebugInfo_for ( HChar* filename )
    Check that the invariants stated in
    "Comment_on_IMPORTANT_CFSI_REPRESENTATIONAL_INVARIANTS" in
    priv_storage.h are observed. */
-static void check_CFSI_related_invariants ( DebugInfo* di )
+static void check_CFSI_related_invariants ( const DebugInfo* di )
 {
    DebugInfo* di2 = NULL;
    Bool has_nonempty_rx = False;
@@ -506,7 +503,7 @@ static void check_CFSI_related_invariants ( DebugInfo* di )
    vg_assert(di->fsm.have_rx_map);
    vg_assert(di->fsm.have_rw_map);
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+      const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       /* We are interested in r-x mappings only */
       if (!map->rx)
          continue;
@@ -525,7 +522,7 @@ static void check_CFSI_related_invariants ( DebugInfo* di )
          if (di2 == di)
             continue;
          for (j = 0; j < VG_(sizeXA)(di2->fsm.maps); j++) {
-            struct _DebugInfoMapping* map2 = VG_(indexXA)(di2->fsm.maps, j);
+            const DebugInfoMapping* map2 = VG_(indexXA)(di2->fsm.maps, j);
             if (!map2->rx || map2->size == 0)
                continue;
             vg_assert(!ranges_overlap(map->avma,  map->size,
@@ -603,6 +600,109 @@ void VG_(di_initialise) ( void )
 
 #if defined(VGO_linux)  ||  defined(VGO_darwin)
 
+/* Helper (indirect) for di_notify_ACHIEVE_ACCEPT_STATE */
+static Bool overlaps_DebugInfoMappings ( const DebugInfoMapping* map1,
+                                         const DebugInfoMapping* map2 )
+{
+   vg_assert(map1 && map2 && map1 != map2);
+   vg_assert(map1->size != 0 && map2->size != 0);
+   if (map1->avma + map1->size <= map2->avma) return False;
+   if (map2->avma + map2->size <= map1->avma) return False;
+   return True;
+}
+
+
+/* Helper (indirect) for di_notify_ACHIEVE_ACCEPT_STATE */
+static void show_DebugInfoMappings 
+               ( const DebugInfo* di,
+                 /*MOD*/XArray* maps /* XArray<DebugInfoMapping> */ )
+{
+   Word i, n;
+   vg_assert(maps);
+   n = VG_(sizeXA)(maps);
+   for (i = 0; i < n; i++) {
+      const DebugInfoMapping* map = VG_(indexXA)(maps, i);
+      TRACE_SYMTAB("  [%ld]    avma 0x%-16llx    size %-8lu    "
+                   "foff %-8lld    %s %s %s\n",
+                   i, (ULong)map->avma, map->size, (Long)map->foff,
+                   map->rx ? "rx" : "--",
+                   map->rw ? "rw" : "--",
+                   map->ro ? "ro" : "--");
+   }
+}
+
+
+/* Helper for di_notify_ACHIEVE_ACCEPT_STATE.  This removes overlaps
+   in |maps|, in a fairly weak way, by truncating overlapping ends.
+   This may need to be strengthened in future.  Currently it performs
+   a post-fixup check, so as least we can be sure that if this
+   function returns (rather than asserts) that |maps| is overlap
+   free. */
+static void truncate_DebugInfoMapping_overlaps
+               ( const DebugInfo* di,
+                 /*MOD*/XArray* maps /* XArray<DebugInfoMapping> */ )
+{
+   TRACE_SYMTAB("Un-de-overlapped _DebugInfoMappings:\n");
+   show_DebugInfoMappings(di, maps);
+   TRACE_SYMTAB("\n");
+
+   Word i, j, n;
+   DebugInfoMapping *map_i, *map_j;
+
+   n = VG_(sizeXA)(maps);
+   for (i = 0; i < n; i++) {
+
+      map_i = VG_(indexXA)(maps, i);
+      if (map_i->size == 0)
+        continue; // Hmm, mutancy.  Shouldn't happen.
+
+      for (j = i+1; j < n; j++) {
+
+         map_j = VG_(indexXA)(maps, j);
+         if (map_j->size == 0)
+           continue; // Hmm, mutancy.  Shouldn't happen.
+
+         /* map_j was observed later than map_i, since the entries are
+            in the XArray in the order in which they were observed.
+            If map_j starts inside map_i, trim map_i's end so it does
+            not overlap map_j.  This reflects the reality that when
+            two mmaped areas overlap, the later mmap silently
+            overwrites the earlier mmap's mapping. */
+         if (map_j->avma >= map_i->avma
+             && map_j->avma < map_i->avma + map_i->size) {
+            SizeT map_i_newsize = map_j->avma - map_i->avma;
+            vg_assert(map_i_newsize < map_i->size);
+            map_i->size = map_i_newsize;
+         }
+
+      }
+   }
+
+   TRACE_SYMTAB("De-overlapped DebugInfoMappings:\n");
+   show_DebugInfoMappings(di, maps);
+   TRACE_SYMTAB("\n");
+   TRACE_SYMTAB("Checking that there are no remaining overlaps.\n");
+
+   for (i = 0; i < n; i++) {
+      map_i = VG_(indexXA)(maps, i);
+      if (map_i->size == 0)
+        continue;
+      for (j = i+1; j < n; j++) {
+         map_j = VG_(indexXA)(maps, j);
+         if (map_j->size == 0)
+           continue;
+         Bool overlap
+            = overlaps_DebugInfoMappings( map_i, map_j );
+         /* If the following assert ever fails, it means the de-overlapping
+            scheme above is too weak, and needs improvement. */
+         vg_assert(!overlap);
+      }
+   }
+
+   TRACE_SYMTAB("Check successful.\n");
+}
+
+
 /* The debug info system is driven by notifications that a text
    segment has been mapped in, or unmapped, or when sections change
    permission.  It's all a bit kludgey and basically means watching
@@ -628,6 +728,7 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
    vg_assert(di->fsm.filename);
    TRACE_SYMTAB("\n");
    TRACE_SYMTAB("------ start ELF OBJECT "
+                "-------------------------"
                 "------------------------------\n");
    TRACE_SYMTAB("------ name = %s\n", di->fsm.filename);
    TRACE_SYMTAB("\n");
@@ -638,7 +739,13 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
       ranges (to avoid total confusion). */
    discard_DebugInfos_which_overlap_with( di );
 
-   /* .. and acquire new info. */
+   /* The DebugInfoMappings that now exist in the FSM may involve
+      overlaps.  This confuses ML_(read_elf_debug_info), and may cause
+      it to compute wrong biases.  So de-overlap them now.
+      See http://bugzilla.mozilla.org/show_bug.cgi?id=788974 */
+   truncate_DebugInfoMapping_overlaps( di, di->fsm.maps );
+
+   /* And acquire new info. */
 #  if defined(VGO_linux)
    ok = ML_(read_elf_debug_info)( di );
 #  elif defined(VGO_darwin)
@@ -680,6 +787,7 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
    TRACE_SYMTAB("\n");
    TRACE_SYMTAB("------ name = %s\n", di->fsm.filename);
    TRACE_SYMTAB("------ end ELF OBJECT "
+                "-------------------------"
                 "------------------------------\n");
    TRACE_SYMTAB("\n");
 
@@ -926,7 +1034,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
                   "noting details in DebugInfo* at %p\n", di);
 
    /* Note the details about the mapping. */
-   struct _DebugInfoMapping map;
+   DebugInfoMapping map;
    map.avma = a;
    map.size = seg->end + 1 - seg->start;
    map.foff = seg->offset;
@@ -1025,7 +1133,7 @@ void VG_(di_notify_vm_protect)( Addr a, SizeT len, UInt prot )
    if (debug)
       VG_(printf)("di_notify_vm_protect-3: looking for existing DebugInfo*\n");
    DebugInfo* di;
-   struct _DebugInfoMapping *map = NULL;
+   DebugInfoMapping *map = NULL;
    Word i;
    for (di = debugInfo_list; di; di = di->next) {
       vg_assert(di->fsm.filename);
@@ -1039,7 +1147,7 @@ void VG_(di_notify_vm_protect)( Addr a, SizeT len, UInt prot )
          continue; /* need to have a rw- mapping */
       /* Try to find a mapping matching the memory area. */
       for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-         map = (struct _DebugInfoMapping*)VG_(indexXA)(di->fsm.maps, i);
+         map = VG_(indexXA)(di->fsm.maps, i);
          if (map->ro && map->avma == a && map->size == len)
             break;
          map = NULL;
@@ -1065,7 +1173,7 @@ void VG_(di_notify_vm_protect)( Addr a, SizeT len, UInt prot )
    di->fsm.have_ro_map = False;
    /* See if there are any more ro mappings */
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      map = (struct _DebugInfoMapping*)VG_(indexXA)(di->fsm.maps, i);
+      map = VG_(indexXA)(di->fsm.maps, i);
       if (map->ro) {
          di->fsm.have_ro_map = True;
          break;
@@ -1119,7 +1227,7 @@ void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
    obj_mtime = stat_buf.mtime;
 
    /* and get its name into exename. */
-   HChar *exe;
+   const HChar *exe;
    if (! VG_(resolve_filename)(fd_obj, &exe))
       return; /*  failed */
    sz_exename = VG_(strlen)(exe);
@@ -1335,8 +1443,7 @@ void VG_(di_discard_ALL_debuginfo)( void )
 }
 
 
-struct _DebugInfoMapping* ML_(find_rx_mapping) ( struct _DebugInfo* di,
-                                                 Addr lo, Addr hi )
+DebugInfoMapping* ML_(find_rx_mapping) ( DebugInfo* di, Addr lo, Addr hi )
 {
    Word i;
    vg_assert(lo <= hi); 
@@ -1348,7 +1455,7 @@ struct _DebugInfoMapping* ML_(find_rx_mapping) ( struct _DebugInfo* di,
       return di->last_rx_map;
 
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+      DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (   map->rx && map->size > 0
           && lo >= map->avma && hi < map->avma + map->size) {
          di->last_rx_map = map;
@@ -1378,12 +1485,12 @@ struct _InlIPCursor {
                          // level.
 };
 
-static Bool is_top(InlIPCursor *iipc)
+static Bool is_top(const InlIPCursor *iipc)
 {
    return !iipc || iipc->cur_inltab == -1;
 }
 
-static Bool is_bottom(InlIPCursor *iipc)
+static Bool is_bottom(const InlIPCursor *iipc)
 {
    return !iipc || iipc->next_inltab == -1;
 }
@@ -1622,11 +1729,18 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
    C++ demangling, regardless of VG_(clo_demangle) -- probably because the
    call has come from VG_(get_fnname_raw)().  findText
    indicates whether we're looking for a text symbol or a data symbol
-   -- caller must choose one kind or the other. */
+   -- caller must choose one kind or the other.
+   Note: the string returned in *BUF is persistent as long as 
+   (1) the DebugInfo it belongs to is not discarded
+   (2) the segment containing the address is not merged with another segment
+   (3) the demangler is not invoked again
+   In other words: if in doubt, save it away.
+   Also, the returned string is owned by "somebody else". Callers must
+   not free it or modify it. */
 static
 Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
                     Bool do_below_main_renaming,
-                    Addr a, HChar** buf,
+                    Addr a, const HChar** buf,
                     Bool match_anywhere_in_sym, Bool show_offset,
                     Bool findText, /*OUT*/PtrdiffT* offsetP )
 {
@@ -1636,7 +1750,7 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
 
    search_all_symtabs ( a, &di, &sno, match_anywhere_in_sym, findText );
    if (di == NULL) {
-      *buf = (HChar *)"";    // FIXME: constification
+      *buf = "";
       return False;
    }
 
@@ -1652,7 +1766,7 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
    if ( do_below_main_renaming && ! VG_(clo_show_below_main) &&
         Vg_FnNameBelowMain == VG_(get_fnname_kind)(*buf) )
    {
-     *buf = (HChar *)"(below main)";  // FIXME: constification
+     *buf = "(below main)";
    }
    offset = a - di->symtab[sno].avmas.main;
    if (offsetP) *offsetP = offset;
@@ -1660,12 +1774,17 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
    if (show_offset && offset != 0) {
       static HChar *bufwo;      // buf with offset
       static SizeT  bufwo_szB;
-      SizeT  need;
+      SizeT  need, len;
 
-      need = VG_(strlen)(*buf) + 1 + 19 + 1;
-      grow_buffer(&bufwo, &bufwo_szB, need);
+      len = VG_(strlen)(*buf);
+      need = len + 1 + 19 + 1;
+      if (need > bufwo_szB) {
+        bufwo = ML_(dinfo_realloc)("get_sym_size", bufwo, need);
+        bufwo_szB = need;
+      }
 
-      VG_(sprintf)(bufwo, "%s%c%ld", *buf,
+      VG_(strcpy)(bufwo, *buf);
+      VG_(sprintf)(bufwo + len, "%c%ld",
                    offset < 0 ? '-' : '+',
                    offset < 0 ? -offset : offset);
       *buf = bufwo;
@@ -1696,8 +1815,10 @@ Addr VG_(get_tocptr) ( Addr guest_code_addr )
 }
 
 /* This is available to tools... always demangle C++ names,
-   match anywhere in function, but don't show offsets. */
-Bool VG_(get_fnname) ( Addr a, HChar** buf )
+   match anywhere in function, but don't show offsets.
+   NOTE: See important comment about the persistence and memory ownership
+   of the return string at function get_sym_name */
+Bool VG_(get_fnname) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
                          /*below-main-renaming*/True,
@@ -1709,8 +1830,10 @@ Bool VG_(get_fnname) ( Addr a, HChar** buf )
 }
 
 /* This is available to tools... always demangle C++ names,
-   match anywhere in function, and show offset if nonzero. */
-Bool VG_(get_fnname_w_offset) ( Addr a, HChar** buf )
+   match anywhere in function, and show offset if nonzero.
+   NOTE: See important comment about the persistence and memory ownership
+   of the return string at function get_sym_name */
+Bool VG_(get_fnname_w_offset) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
                          /*below-main-renaming*/True,
@@ -1723,8 +1846,10 @@ Bool VG_(get_fnname_w_offset) ( Addr a, HChar** buf )
 
 /* This is available to tools... always demangle C++ names,
    only succeed if 'a' matches first instruction of function,
-   and don't show offsets. */
-Bool VG_(get_fnname_if_entry) ( Addr a, HChar** buf )
+   and don't show offsets.
+   NOTE: See important comment about the persistence and memory ownership
+   of the return string at function get_sym_name */
+Bool VG_(get_fnname_if_entry) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
                          /*below-main-renaming*/True,
@@ -1737,8 +1862,10 @@ Bool VG_(get_fnname_if_entry) ( Addr a, HChar** buf )
 
 /* This is only available to core... don't C++-demangle, don't Z-demangle,
    don't rename below-main, match anywhere in function, and don't show
-   offsets. */
-Bool VG_(get_fnname_raw) ( Addr a, HChar** buf )
+   offsets.
+   NOTE: See important comment about the persistence and memory ownership
+   of the return string at function get_sym_name */
+Bool VG_(get_fnname_raw) ( Addr a, const HChar** buf )
 {
    return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
                          /*below-main-renaming*/False,
@@ -1751,9 +1878,11 @@ Bool VG_(get_fnname_raw) ( Addr a, HChar** buf )
 
 /* This is only available to core... don't demangle C++ names, but do
    do Z-demangling and below-main-renaming, match anywhere in function, and
-   don't show offsets. */
-Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, HChar** buf,
-                                       InlIPCursor* iipc )
+   don't show offsets.
+   NOTE: See important comment about the persistence and memory ownership
+   of the return string at function get_sym_name */
+Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, const HChar** buf,
+                                       const InlIPCursor* iipc )
 {
    if (is_bottom(iipc)) {
       // At the bottom (towards main), we describe the fn at eip.
@@ -1770,7 +1899,7 @@ Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, HChar** buf,
          : NULL;
       vg_assert (next_inl);
       // The function we are in is called by next_inl.
-      *buf = (HChar *)next_inl->inlinedfn;  // FIXME: constification
+      *buf = next_inl->inlinedfn;
       return True;
    }
 }
@@ -1781,7 +1910,7 @@ Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, HChar** buf,
 Bool VG_(get_inst_offset_in_function)( Addr a,
                                        /*OUT*/PtrdiffT* offset )
 {
-   HChar *fnname;
+   const HChar *fnname;
    return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
                          /*below-main-renaming*/False,
                          a, &fnname,
@@ -1791,7 +1920,7 @@ Bool VG_(get_inst_offset_in_function)( Addr a,
                          offset );
 }
 
-Vg_FnNameKind VG_(get_fnname_kind) ( HChar* name )
+Vg_FnNameKind VG_(get_fnname_kind) ( const HChar* name )
 {
    if (VG_STREQ("main", name)) {
       return Vg_FnNameMain;
@@ -1816,7 +1945,7 @@ Vg_FnNameKind VG_(get_fnname_kind) ( HChar* name )
 
 Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip )
 {
-   HChar *buf;
+   const HChar *buf;
 
    // We don't demangle, because it's faster not to, and the special names
    // we're looking for won't be mangled.
@@ -1830,9 +1959,11 @@ Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip )
 
 /* Looks up data_addr in the collection of data symbols, and if found
    puts a pointer to its name into dname. The name is zero terminated.
-   Also data_addr's offset from the symbol start is put into *offset. */
+   Also data_addr's offset from the symbol start is put into *offset.
+   NOTE: See important comment about the persistence and memory ownership
+   of the return string at function get_sym_name */
 Bool VG_(get_datasym_and_offset)( Addr data_addr,
-                                  /*OUT*/HChar** dname,
+                                  /*OUT*/const HChar** dname,
                                   /*OUT*/PtrdiffT* offset )
 {
    return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
@@ -1844,18 +1975,17 @@ Bool VG_(get_datasym_and_offset)( Addr data_addr,
                        offset );
 }
 
-
 /* Map a code address to the name of a shared object file or the
-   executable.  Returns False if no idea; otherwise True.  Doesn't
-   require debug info. */
-Bool VG_(get_objname) ( Addr a, HChar** objname )
+   executable.  Returns False if no idea; otherwise True.
+   Note: the string returned in *BUF is persistent as long as 
+   (1) the DebugInfo it belongs to is not discarded
+   (2) the segment containing the address is not merged with another segment
+*/
+Bool VG_(get_objname) ( Addr a, const HChar** buf )
 {
    DebugInfo* di;
    const NSegment *seg;
-   HChar* filename;
-
-   static SizeT bufsiz = 0;
-   static HChar *buf = NULL;
+   const HChar* filename;
 
    /* Look in the debugInfo_list to find the name.  In most cases we
       expect this to produce a result. */
@@ -1864,8 +1994,7 @@ Bool VG_(get_objname) ( Addr a, HChar** objname )
           && di->text_size > 0
           && di->text_avma <= a 
           && a < di->text_avma + di->text_size) {
-         grow_buffer_for_string(&buf, &bufsiz, di->fsm.filename);
-         *objname = VG_(strcpy)(buf, di->fsm.filename);
+         *buf = di->fsm.filename;
          return True;
       }
    }
@@ -1876,8 +2005,7 @@ Bool VG_(get_objname) ( Addr a, HChar** objname )
       when running programs under wine. */
    if ( (seg = VG_(am_find_nsegment(a))) != NULL 
         && (filename = VG_(am_get_filename)(seg)) != NULL ) {
-      grow_buffer_for_string(&buf, &bufsiz, filename);
-      *objname = VG_(strcpy)(buf, filename);
+     *buf = filename;
       return True;
    }
    return False;
@@ -1903,34 +2031,20 @@ DebugInfo* VG_(find_DebugInfo) ( Addr a )
    return NULL;
 }
 
-/* Map a code address to a filename.  Returns True if successful. In that
-   case *filename points to a dynamically allocated buffer that holds the
-   nul-terminated filename. Note, that this buffer will be overwritten in
-   the next invocation, so callers need to copy the string if so needed. */
-Bool VG_(get_filename)( Addr a, HChar** filename )
+/* Map a code address to a filename.  Returns True if successful. The
+   returned string is persistent as long as the DebugInfo to which it
+   belongs is not discarded. */
+Bool VG_(get_filename)( Addr a, const HChar** filename )
 {
    DebugInfo* si;
    Word       locno;
    UInt       fndn_ix;
 
    search_all_loctabs ( a, &si, &locno );
-   if (si == NULL) {
-      *filename = NULL;
+   if (si == NULL) 
       return False;
-   }
    fndn_ix = ML_(fndn_ix) (si, locno);
-
-   // This string is not persistent. It would not survive a dlclose of the
-   // shared object to which the file belonged. The reason is that the
-   // associated debuginfo will be freed and the stringpool hangs off that.
-   const HChar *fname = ML_(fndn_ix2filename) (si, fndn_ix);
-
-   static SizeT bufsiz = 0;
-   static HChar *buf = NULL;
-
-   grow_buffer_for_string(&buf, &bufsiz, fname);
-   *filename = VG_(strcpy)(buf, fname);
-
+   *filename = ML_(fndn_ix2filename) (si, fndn_ix);
    return True;
 }
 
@@ -1951,18 +2065,14 @@ Bool VG_(get_linenum)( Addr a, UInt* lineno )
    See prototype for detailed description of behaviour.
 */
 Bool VG_(get_filename_linenum) ( Addr a, 
-                                 /*OUT*/HChar** filename,
-                                 /*OUT*/HChar** dirname,
+                                 /*OUT*/const HChar** filename,
+                                 /*OUT*/const HChar** dirname,
                                  /*OUT*/Bool* dirname_available,
                                  /*OUT*/UInt* lineno )
 {
    DebugInfo* si;
    Word       locno;
    UInt       fndn_ix;
-   const HChar *fname, *dname;
-
-   static HChar *fbuf, *dbuf;
-   static SizeT  fbuf_siz, dbuf_siz;
 
    vg_assert( (dirname == NULL && dirname_available == NULL)
               ||
@@ -1972,33 +2082,20 @@ Bool VG_(get_filename_linenum) ( Addr a,
    if (si == NULL) {
       if (dirname_available) {
          *dirname_available = False;
-         grow_buffer_for_string(&dbuf, &dbuf_siz, "");
-         *dirname = VG_(strcpy)(dbuf, "");
+         *dirname = "";
       }
-      // filename used to be an HChar [] and it was not initialised along
-      // this path. Not good.
-      // Nowadays, filename is a HChar ** and we initialise it to NULL here
-      // to find executions along which the filename array was read 
-      // uninitialised or (even worse) expected to keep its value past this
-      // function invocation.
-      *filename = NULL;
+      *filename = "";      // this used to be not initialised....
       return False;
    }
 
    fndn_ix = ML_(fndn_ix)(si, locno);
-
-   fname = ML_(fndn_ix2filename) (si, fndn_ix);
-   grow_buffer_for_string(&fbuf, &fbuf_siz, fname);
-   *filename = VG_(strcpy)(fbuf, fname);
-
+   *filename = ML_(fndn_ix2filename) (si, fndn_ix);
    *lineno = si->loctab[locno].lineno;
 
    if (dirname) {
       /* caller wants directory info too .. */
-      dname = ML_(fndn_ix2dirname) (si, fndn_ix);
-      grow_buffer_for_string(&dbuf, &dbuf_siz, dname);
-      *dirname = VG_(strcpy)(dbuf, dname);
-      *dirname_available = *dirname[0] != 0;
+      *dirname = ML_(fndn_ix2dirname) (si, fndn_ix);
+      *dirname_available = (*dirname)[0] != '\0';
    }
 
    return True;
@@ -2012,11 +2109,12 @@ Bool VG_(get_filename_linenum) ( Addr a,
    Therefore specify "*" to search all the objects.  On TOC-afflicted
    platforms, a symbol is deemed to be found only if it has a nonzero
    TOC pointer.  */
-Bool VG_(lookup_symbol_SLOW)(const HChar* sopatt, HChar* name, SymAVMAs* avmas)
+Bool VG_(lookup_symbol_SLOW)(const HChar* sopatt, const HChar* name,
+                             SymAVMAs* avmas)
 {
    Bool     require_pToc = False;
    Int      i;
-   DebugInfo* si;
+   const DebugInfo* si;
    Bool     debug = False;
 #  if defined(VG_PLAT_USES_PPCTOC)
    require_pToc = True;
@@ -2030,14 +2128,14 @@ Bool VG_(lookup_symbol_SLOW)(const HChar* sopatt, HChar* name, SymAVMAs* avmas)
          continue;
       }
       for (i = 0; i < si->symtab_used; i++) {
-         HChar* pri_name = si->symtab[i].pri_name;
+         const HChar* pri_name = si->symtab[i].pri_name;
          vg_assert(pri_name);
          if (0==VG_(strcmp)(name, pri_name)
              && (require_pToc ? GET_TOCPTR_AVMA(si->symtab[i].avmas) : True)) {
             *avmas = si->symtab[i].avmas;
             return True;
          }
-         HChar** sec_names = si->symtab[i].sec_names;
+         const HChar** sec_names = si->symtab[i].sec_names;
          if (sec_names) {
             vg_assert(sec_names[0]);
             while (*sec_names) {
@@ -2056,25 +2154,32 @@ Bool VG_(lookup_symbol_SLOW)(const HChar* sopatt, HChar* name, SymAVMAs* avmas)
 }
 
 
-/* VG_(describe_IP): print into buf info on code address, function
-   name and filename. */
+/* VG_(describe_IP): return info on code address, function name and
+   filename. The returned string is allocated in a static buffer and will
+   be overwritten in the next invocation. */
 
-/* Copy str into buf starting at n, ensuring that buf is zero-terminated.
+/* Copy str into *buf starting at n, ensuring that buf is zero-terminated.
    Return the index of the terminating null character. */
-
-static SizeT putStr( SizeT n, HChar** buf, SizeT *bufsiz, const HChar* str ) 
+static SizeT 
+putStr( SizeT n, HChar** buf, SizeT *bufsiz, const HChar* str ) 
 {
    SizeT slen = VG_(strlen)(str);
+   SizeT need = n + slen + 1;
 
-   grow_buffer(buf, bufsiz, n + slen + 1);
+   if (need > *bufsiz) {
+      if (need < 256) need = 256;
+      *bufsiz = need;
+      *buf = ML_(dinfo_realloc)("putStr", *buf, *bufsiz);
+   }
+
    VG_(strcpy)(*buf + n, str);
 
    return n + slen;
 }
 
 /* Same as putStr, but escaping chars for XML output. */
-
-static SizeT putStrEsc( SizeT n, HChar** buf, SizeT *bufsiz, const HChar* str ) 
+static SizeT 
+putStrEsc( SizeT n, HChar** buf, SizeT *bufsiz, const HChar* str )
 {
    HChar alt[2];
 
@@ -2099,27 +2204,27 @@ static SizeT putStrEsc( SizeT n, HChar** buf, SizeT *bufsiz, const HChar* str )
    return n;
 }
 
-const HChar* VG_(describe_IP)(Addr eip, InlIPCursor *iipc)
+const HChar* VG_(describe_IP)(Addr eip, const InlIPCursor *iipc)
 {
+   static HChar *buf = NULL;
+   static SizeT bufsiz = 0;
 #  define APPEND(_str) \
       n = putStr(n, &buf, &bufsiz, _str)
 #  define APPEND_ESC(_str) \
       n = putStrEsc(n, &buf, &bufsiz, _str)
 
    UInt  lineno; 
-   HChar ibuf[50];
+   HChar ibuf[50];   // large enough
    SizeT n = 0;
 
    vg_assert (!iipc || iipc->eip == eip);
 
-   static HChar *buf;
-   static SizeT  bufsiz;
-   HChar *buf_fn;
-   HChar *buf_obj;
-   HChar *buf_srcloc;
-   HChar *buf_dirname;
+   const HChar *buf_fn;
+   const HChar *buf_obj;
+   const HChar *buf_srcloc;
+   const HChar *buf_dirname;
 
-   Bool  know_dirinfo = False;
+   Bool  know_dirinfo;
    Bool  know_fnname;
    Bool  know_objname;
    Bool  know_srcloc;
@@ -2135,7 +2240,7 @@ const HChar* VG_(describe_IP)(Addr eip, InlIPCursor *iipc)
          : NULL;
       vg_assert (next_inl);
       // The function we are in is called by next_inl.
-      buf_fn = (HChar *)next_inl->inlinedfn;  // FIXME: constification
+      buf_fn = next_inl->inlinedfn;
       know_fnname = True;
 
       // INLINED????
@@ -2163,17 +2268,18 @@ const HChar* VG_(describe_IP)(Addr eip, InlIPCursor *iipc)
       vg_assert (cur_inl);
 
       know_dirinfo = False;
+      buf_dirname  = "";
       // The fndn_ix and lineno for the caller of the inlined fn is in cur_inl.
       if (cur_inl->fndn_ix == 0) {
-         buf_srcloc = (HChar *)"???";       // FIXME: constification
+         buf_srcloc = "???";
       } else {
          FnDn *fndn = VG_(indexEltNumber) (iipc->di->fndnpool,
                                            cur_inl->fndn_ix);
          if (fndn->dirname) {
-            buf_dirname = (HChar *)fndn->dirname;  // FIXME: constification
+            buf_dirname = fndn->dirname;
             know_dirinfo = True;
          }
-         buf_srcloc = (HChar *)fndn->filename;  // FIXME: constification
+         buf_srcloc = fndn->filename;
       }
       lineno = cur_inl->lineno;
       know_srcloc = True;
@@ -2246,8 +2352,8 @@ const HChar* VG_(describe_IP)(Addr eip, InlIPCursor *iipc)
       if (know_srcloc) {
          APPEND(" (");
          // Get the directory name, if any, possibly pruned, into dirname.
-         HChar* dirname = NULL;
-         if (VG_(sizeXA)(VG_(clo_fullpath_after)) > 0) {
+         const HChar* dirname = NULL;
+         if (know_dirinfo && VG_(sizeXA)(VG_(clo_fullpath_after)) > 0) {
             Int i;
             dirname = buf_dirname;
             // Remove leading prefixes from the dirname.
@@ -2306,7 +2412,7 @@ const HChar* VG_(describe_IP)(Addr eip, InlIPCursor *iipc)
    a CfiExpr into one convenient struct. */
 typedef
    struct {
-      D3UnwindRegs* uregs;
+      const D3UnwindRegs* uregs;
       Addr          min_accessible;
       Addr          max_accessible;
    }
@@ -2317,12 +2423,12 @@ typedef
    caller must set it to True before calling. */
 __attribute__((noinline))
 static
-UWord evalCfiExpr ( XArray* exprs, Int ix, 
-                    CfiExprEvalContext* eec, Bool* ok )
+UWord evalCfiExpr ( const XArray* exprs, Int ix, 
+                    const CfiExprEvalContext* eec, Bool* ok )
 {
    UWord w, wL, wR;
    Addr  a;
-   CfiExpr* e;
+   const CfiExpr* e;
    vg_assert(sizeof(Addr) == sizeof(UWord));
    e = VG_(indexXA)( exprs, ix );
    switch (e->tag) {
@@ -2571,9 +2677,9 @@ static inline CFSI_m_CacheEnt* cfsi_m_cache__find ( Addr ip )
 
 
 inline
-static Addr compute_cfa ( D3UnwindRegs* uregs,
+static Addr compute_cfa ( const D3UnwindRegs* uregs,
                           Addr min_accessible, Addr max_accessible,
-                          DebugInfo* di, DiCfSI_m* cfsi_m )
+                          const DebugInfo* di, const DiCfSI_m* cfsi_m )
 {
    CfiExprEvalContext eec;
    Addr               cfa;
@@ -2851,7 +2957,7 @@ Bool VG_(use_FPO_info) ( /*MOD*/Addr* ipP,
                          Addr max_accessible )
 {
    Word       i;
-   DebugInfo* di;
+   const DebugInfo* di;
    FPO_DATA*  fpo = NULL;
    Addr       spHere;
 
@@ -2991,10 +3097,10 @@ static void zterm_XA ( XArray* dst )
    regs, which supplies ip,sp,fp values, will be NULL for global
    variables, and non-NULL for local variables. */
 static Bool data_address_is_in_var ( /*OUT*/PtrdiffT* offset,
-                                     XArray* /* TyEnt */ tyents,
-                                     DiVariable*   var,
-                                     RegSummary*   regs,
-                                     Addr          data_addr,
+                                     const XArray* /* TyEnt */ tyents,
+                                     const DiVariable*   var,
+                                     const RegSummary*   regs,
+                                     Addr  data_addr,
                                      const DebugInfo* di )
 {
    MaybeULong mul;
@@ -3060,11 +3166,11 @@ static Bool data_address_is_in_var ( /*OUT*/PtrdiffT* offset,
 static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
                              /*MOD*/XArray* /* of HChar */ dn2,
                              Addr     data_addr,
-                             DebugInfo* di,
-                             DiVariable* var,
+                             const DebugInfo* di,
+                             const DiVariable* var,
                              PtrdiffT var_offset,
                              PtrdiffT residual_offset,
-                             XArray* /*UChar*/ described,
+                             const XArray* /*HChar*/ described,
                              Int      frameNo, 
                              ThreadId tid )
 {
@@ -3092,7 +3198,7 @@ static void format_message ( /*MOD*/XArray* /* of HChar */ dn1,
    vg_assert(described);
    vg_assert(var && var->name);
    have_descr = VG_(sizeXA)(described) > 0
-                && *(UChar*)VG_(indexXA)(described,0) != '\0';
+                && *(HChar*)VG_(indexXA)(described,0) != '\0';
    have_srcloc = var->fndn_ix > 0 && var->lineNo > 0;
 
    tagL[0] = tagR[0] = xagL[0] = xagR[0] = 0;
@@ -3673,8 +3779,8 @@ Bool VG_(get_data_description)(
 
 static 
 void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
-                    XArray* /* TyEnt */ tyents,
-                    Addr ip, const DebugInfo* di, DiVariable* var,
+                    const XArray* /* TyEnt */ tyents,
+                    Addr ip, const DebugInfo* di, const DiVariable* var,
                     Bool arrays_only )
 {
    GXResult   res_sp_6k, res_sp_7k, res_fp_6k, res_fp_7k;
@@ -4131,8 +4237,8 @@ void VG_(DebugInfo_syms_getidx) ( const DebugInfo *si,
                                         Int idx,
                                   /*OUT*/SymAVMAs* avmas,
                                   /*OUT*/UInt*     size,
-                                  /*OUT*/HChar**   pri_name,
-                                  /*OUT*/HChar***  sec_names,
+                                  /*OUT*/const HChar**   pri_name,
+                                  /*OUT*/const HChar***  sec_names,
                                   /*OUT*/Bool*     isText,
                                   /*OUT*/Bool*     isIFunc )
 {
@@ -4140,7 +4246,7 @@ void VG_(DebugInfo_syms_getidx) ( const DebugInfo *si,
    if (avmas)     *avmas     = si->symtab[idx].avmas;
    if (size)      *size      = si->symtab[idx].size;
    if (pri_name)  *pri_name  = si->symtab[idx].pri_name;
-   if (sec_names) *sec_names = (HChar **)si->symtab[idx].sec_names; // FIXME
+   if (sec_names) *sec_names = si->symtab[idx].sec_names;
    if (isText)    *isText    = si->symtab[idx].isText;
    if (isIFunc)   *isIFunc   = si->symtab[idx].isIFunc;
 }
@@ -4172,7 +4278,7 @@ const HChar* VG_(pp_SectKind)( VgSectKind kind )
    in *name. The returned name, if any, should be saved away, if there is
    a chance that a debug-info will be discarded and the name is being
    used later on. */
-VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar** name, Addr a)
+VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/const HChar** name, Addr a)
 {
    DebugInfo* di;
    VgSectKind res = Vg_SectUnknown;
@@ -4253,33 +4359,12 @@ VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/HChar** name, Addr a)
       if (di && di->fsm.filename) {
          *name = di->fsm.filename;
       } else {
-         *name = (HChar *)"???";    // FIXME: constification
+         *name = "???";
       }
    }
 
    return res;
 
-}
-
-
-/*------------------------------------------------------------*/
-/*--- Helper functions to grow a buffer                    ---*/
-/*------------------------------------------------------------*/
-
-static void grow_buffer(HChar **buf, SizeT *size, SizeT need)
-{
-   if (need > *size) {
-      if (need < 256) need = 256;
-      *size = need;
-      *buf = ML_(dinfo_realloc)("grow_buffer", *buf, *size);
-   }
-}
-
-// Convenience function 
-static void grow_buffer_for_string(HChar **buf, SizeT *size,
-                                   const HChar *string)
-{
-   grow_buffer(buf, size, VG_(strlen)(string) + 1);
 }
 
 /*--------------------------------------------------------------------*/

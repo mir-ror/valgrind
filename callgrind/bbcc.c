@@ -338,24 +338,23 @@ void insert_bbcc_into_hash(BBCC* bbcc)
 
 /* String is returned in a dynamically allocated buffer. Caller is
    responsible for free'ing it. */
-static HChar* mangled_cxt(Context* cxt, Int rec_index)
+static HChar* mangled_cxt(const Context* cxt, Int rec_index)
 {
-    SizeT  size = 200;
-    HChar *mangled = CLG_MALLOC("cl.bbcc.mcxt", size);
     Int i, p;
 
-    if (!cxt) return VG_(strcpy)(mangled, "(no context)");
+    if (!cxt) return VG_(strdup)("cl.bbcc.mcxt", "(no context)");
 
-    grow_buffer(&mangled, &size, VG_(strlen)(cxt->fn[0]->name) + 1);
+    /* Overestimate the number of bytes we need to hold the string. */
+    SizeT need = 20;   // rec_index + nul-terminator
+    for (i = 0; i < cxt->size; ++i)
+       need += VG_(strlen)(cxt->fn[i]->name) + 1;   // 1 for leading '
+
+    HChar *mangled = CLG_MALLOC("cl.bbcc.mcxt", need);
     p = VG_(sprintf)(mangled, "%s", cxt->fn[0]->name);
-    if (rec_index >0) {
-        grow_buffer(&mangled, &size, p + 1 + 11 + 1);
+    if (rec_index >0)
 	p += VG_(sprintf)(mangled+p, "'%d", rec_index +1);
-    }
-    for(i=1;i<cxt->size;i++) {
-        grow_buffer(&mangled, &size, p + 1 + VG_(strlen)(cxt->fn[i]->name) + 1);
+    for(i=1;i<cxt->size;i++)
 	p += VG_(sprintf)(mangled+p, "'%s", cxt->fn[i]->name);
-    }
 
     return mangled;
 }
@@ -419,14 +418,16 @@ static BBCC* clone_bbcc(BBCC* orig, Context* cxt, Int rec_index)
     CLG_DEBUGIF(3)
       CLG_(print_bbcc)(-2, bbcc);
 
-    // FIXME: mangled_cxt returns a pointer to a dynamically allocated buffer
-    // that should be freed.
+    HChar *mangled_orig = mangled_cxt(orig->cxt, orig->rec_index);
+    HChar *mangled_bbcc = mangled_cxt(bbcc->cxt, bbcc->rec_index);
     CLG_DEBUG(2,"- clone_BBCC(%p, %d) for BB %#lx\n"
 		"   orig %s\n"
 		"   new  %s\n",
 	     orig, rec_index, bb_addr(orig->bb),
-	     mangled_cxt(orig->cxt, orig->rec_index),
-	     mangled_cxt(bbcc->cxt, bbcc->rec_index));
+             mangled_orig,
+             mangled_bbcc);
+    CLG_FREE(mangled_orig);
+    CLG_FREE(mangled_bbcc);
 
     CLG_(stat).bbcc_clones++;
  

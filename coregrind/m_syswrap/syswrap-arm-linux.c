@@ -1088,7 +1088,6 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINX_(__NR_tgkill,            sys_tgkill),         // 270 */Linux
    GENX_(__NR_utimes,            sys_utimes),         // 271
-//   LINX_(__NR_fadvise64_64,      sys_fadvise64_64),   // 272 */(Linux?)
    GENX_(__NR_vserver,           sys_ni_syscall),     // 273
    LINX_(__NR_mbind,             sys_mbind),          // 274 ?/?
 
@@ -1189,6 +1188,8 @@ static SyscallTableEntry syscall_main_table[] = {
    // correspond to what's in include/vki/vki-scnums-arm-linux.h.
    // From here onwards, please ensure the numbers are correct.
 
+   LINX_(__NR_arm_fadvise64_64,  sys_fadvise64_64),     // 270 */(Linux?)
+
    LINX_(__NR_pselect6,          sys_pselect6),         // 335
    LINXY(__NR_ppoll,             sys_ppoll),            // 336
 
@@ -1214,7 +1215,8 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 370
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 371
    LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 372
-   LINXY(__NR_sendmmsg,          sys_sendmmsg)          // 374
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 374
+   LINXY(__NR_getrandom,         sys_getrandom)         // 384
 };
 
 

@@ -46,12 +46,11 @@
 static UInt n_profiles = 0;
 
 static 
-void show_SB_profile ( SBProfEntry tops[], UInt n_tops,
+void show_SB_profile ( const SBProfEntry tops[], UInt n_tops,
                        ULong score_total, ULong ecs_done )
 {
    ULong score_cumul, score_cumul_saved, score_here;
    HChar buf_cumul[10], buf_here[10];
-   HChar *name;
    Int   r; /* must be signed */
 
    HChar ecs_txt[50];
@@ -85,6 +84,7 @@ void show_SB_profile ( SBProfEntry tops[], UInt n_tops,
       if (tops[r].score == 0)
          continue;
 
+      const HChar *name;
       VG_(get_fnname_w_offset)(tops[r].addr, &name);
 
       score_here = tops[r].score;
@@ -117,6 +117,7 @@ void show_SB_profile ( SBProfEntry tops[], UInt n_tops,
          if (tops[r].score == 0)
             continue;
 
+         const HChar *name;
          VG_(get_fnname_w_offset)(tops[r].addr, &name);
 
          score_here = tops[r].score;
@@ -146,6 +147,7 @@ void show_SB_profile ( SBProfEntry tops[], UInt n_tops,
          if (tops[r].score == 0)
             continue;
 
+         const HChar *name;
          VG_(get_fnname_w_offset)(tops[r].addr, &name);
 
          score_here = tops[r].score;

@@ -106,10 +106,14 @@ extern UInt VG_(printf_xml)  ( const HChar *format, ... )
 extern UInt VG_(vprintf_xml) ( const HChar *format, va_list vargs )
                              PRINTF_CHECK(1, 0);
 
-extern UInt VG_(fdprintf)   ( Int fd, const HChar *format, ... )
-                            PRINTF_CHECK(2, 3);
-extern UInt VG_(vfdprintf)  ( Int fd, const HChar *format, va_list vargs )
-                            PRINTF_CHECK(2, 0);
+typedef struct _VgFile VgFile;
+
+extern VgFile *VG_(fopen)    ( const HChar *name, Int flags, Int mode );
+extern void    VG_(fclose)   ( VgFile *fp );
+extern UInt    VG_(fprintf)  ( VgFile *fp, const HChar *format, ... )
+                               PRINTF_CHECK(2, 3);
+extern UInt    VG_(vfprintf) ( VgFile *fp, const HChar *format, va_list vargs )
+                               PRINTF_CHECK(2, 0);
 
 /* Do a printf-style operation on either the XML 
    or normal output channel

@@ -749,7 +749,7 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
                 */
                tl_assert(clo_fnname);
                tl_assert(clo_fnname[0]);
-               HChar *fnname;
+               const HChar *fnname;
                if (VG_(get_fnname_if_entry)(st->Ist.IMark.addr, 
                                             &fnname)
                    && 0 == VG_(strcmp)(fnname, clo_fnname)) {

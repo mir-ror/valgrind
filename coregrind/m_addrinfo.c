@@ -124,7 +124,7 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
    }
    /* -- Have a look at the low level data symbols - perhaps it's in
       there. -- */
-   HChar *name;
+   const HChar *name;
    if (VG_(get_datasym_and_offset)(
              a, &name,
              &ai->Addr.DataSym.offset )) {
@@ -343,7 +343,8 @@ static UInt tnr_else_tid (ThreadInfo tinfo)
       return tinfo.tid;
 }
 
-static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
+static void pp_addrinfo_WRK ( Addr a, const AddrInfo* ai, Bool mc,
+                              Bool maybe_gcc )
 {
    const HChar* xpre  = VG_(clo_xml) ? "  <auxwhat>" : " ";
    const HChar* xpost = VG_(clo_xml) ? "</auxwhat>"  : "";
@@ -376,9 +377,9 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
                     tnr_else_tid (ai->Addr.Stack.tinfo), 
                     xpost );
          if (ai->Addr.Stack.frameNo != -1 && ai->Addr.Stack.IP != 0) {
-            HChar *fn;
+            const HChar *fn;
             Bool  hasfn;
-            HChar *file;
+            const HChar *file;
             Bool  hasfile;
             UInt linenum;
             Bool haslinenum;
@@ -393,14 +394,14 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
 
             hasfile = VG_(get_filename)(ai->Addr.Stack.IP, &file);
 
-            HChar strlinenum[32] = "";   // large enough
+            HChar strlinenum[16] = "";   // large enough
             if (hasfile && haslinenum)
-               VG_(sprintf)(strlinenum, ":%d", linenum);
+               VG_(sprintf)(strlinenum, "%d", linenum);
 
             hasfn = VG_(get_fnname)(ai->Addr.Stack.IP, &fn);
 
             if (hasfn || hasfile)
-               VG_(emit)( "%sin frame #%d, created by %s (%s%s)%s\n",
+               VG_(emit)( "%sin frame #%d, created by %s (%s:%s)%s\n",
                           xpre,
                           ai->Addr.Stack.frameNo, 
                           hasfn ? fn : "???", 
@@ -551,12 +552,12 @@ static void pp_addrinfo_WRK ( Addr a, AddrInfo* ai, Bool mc, Bool maybe_gcc )
    }
 }
 
-void VG_(pp_addrinfo) ( Addr a, AddrInfo* ai )
+void VG_(pp_addrinfo) ( Addr a, const AddrInfo* ai )
 {
    pp_addrinfo_WRK (a, ai, False /*mc*/, False /*maybe_gcc*/);
 }
 
-void VG_(pp_addrinfo_mc) ( Addr a, AddrInfo* ai, Bool maybe_gcc )
+void VG_(pp_addrinfo_mc) ( Addr a, const AddrInfo* ai, Bool maybe_gcc )
 {
    pp_addrinfo_WRK (a, ai, True /*mc*/, maybe_gcc);
 }

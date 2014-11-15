@@ -1,3 +1,5 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
+
 //--------------------------------------------------------------------*/
 //--- BBV: a SimPoint basic block vector generator      bbv_main.c ---*/
 //--------------------------------------------------------------------*/
@@ -35,11 +37,11 @@
 #include "pub_tool_tooliface.h"
 #include "pub_tool_options.h"    /* command line options */
 
+#include "pub_tool_vki.h"        /* VKI_O_CREAT */
 #include "pub_tool_libcbase.h"   /* VG_(strlen) */
-#include "pub_tool_libcfile.h"   /* VG_(write) */
 #include "pub_tool_libcprint.h"  /* VG_(printf) */
 #include "pub_tool_libcassert.h" /* VG_(exit) */
-#include "pub_tool_mallocfree.h" /* plain_free */
+#include "pub_tool_mallocfree.h" /* VG_(malloc) */
 #include "pub_tool_machine.h"    /* VG_(fnptr_to_fnentry) */
 #include "pub_tool_debuginfo.h"  /* VG_(get_fnname) */
 
@@ -80,7 +82,7 @@ struct thread_info {
    ULong global_rep_count;
    ULong unique_rep_count;
    ULong fldcw_count;       /* fldcw count */
-   Int bbtrace_fd;          /* file descriptor */
+   VgFile *bbtrace_fp;      /* file pointer */
 };
 
 struct BB_info {
@@ -89,7 +91,7 @@ struct BB_info {
    Int        block_num;         /* unique block identifier              */
    Int        *inst_counter;     /* times entered * num_instructions     */
    Bool       is_entry;          /* is this block a function entry point */
-   HChar      *fn_name;          /* Function block is in    */
+   const HChar *fn_name;         /* Function block is in                 */
 };
 
 
@@ -98,37 +100,32 @@ struct BB_info {
 static void dumpPcFile(void)
 {
    struct BB_info   *bb_elem;
-   Int              pctrace_fd;
-   SysRes           sres;
+   VgFile *fp;
 
    pc_out_file =
           VG_(expand_file_name)("--pc-out-file", clo_pc_out_file);
 
-   sres = VG_(open)(pc_out_file, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
-                              VKI_S_IRUSR|VKI_S_IWUSR|VKI_S_IRGRP|VKI_S_IWGRP);
-   if (sr_isError(sres)) {
+   fp = VG_(fopen)(pc_out_file, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
+                   VKI_S_IRUSR|VKI_S_IWUSR|VKI_S_IRGRP|VKI_S_IWGRP);
+   if (fp == NULL) {
       VG_(umsg)("Error: cannot create pc file %s\n", pc_out_file);
       VG_(exit)(1);
-   } else {
-      pctrace_fd = sr_Res(sres);
    }
 
       /* Loop through the table, printing the number, address, */
       /*    and function name for each basic block             */
    VG_(OSetGen_ResetIter)(instr_info_table);
    while ( (bb_elem = VG_(OSetGen_Next)(instr_info_table)) ) {
-      VG_(fdprintf)(pctrace_fd, "F:%d:%x:%s\n",
-                       bb_elem->block_num,
-                       (Int)bb_elem->BB_addr,
-                       bb_elem->fn_name);
+      VG_(fprintf)( fp, "F:%d:%x:%s\n", bb_elem->block_num,
+                    (Int)bb_elem->BB_addr, bb_elem->fn_name);
    }
 
-   VG_(close)(pctrace_fd);
+   VG_(fclose)(fp);
 }
 
-static Int open_tracefile(Int thread_num)
+static VgFile *open_tracefile(Int thread_num)
 {
-   SysRes  sres;
+   VgFile *fp;
    // Allocate a buffer large enough for the general case "%s.%d" below
    HChar temp_string[VG_(strlen)(bb_out_file) + 1 + 10 + 1];
 
@@ -142,15 +139,15 @@ static Int open_tracefile(Int thread_num)
       VG_(sprintf)(temp_string,"%s.%d",bb_out_file,thread_num);
    }
 
-   sres = VG_(open)(temp_string, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
-                              VKI_S_IRUSR|VKI_S_IWUSR|VKI_S_IRGRP|VKI_S_IWGRP);
+   fp = VG_(fopen)(temp_string, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
+                   VKI_S_IRUSR|VKI_S_IWUSR|VKI_S_IRGRP|VKI_S_IWGRP);
 
-   if (sr_isError(sres)) {
+   if (fp == NULL) {
       VG_(umsg)("Error: cannot create bb file %s\n",temp_string);
       VG_(exit)(1);
    }
 
-   return sr_Res(sres);
+   return fp;
 }
 
 static void handle_overflow(void)
@@ -161,27 +158,26 @@ static void handle_overflow(void)
 
       if (!instr_count_only) {
 
-            /* If our output fd hasn't been opened, open it */
-         if (bbv_thread[current_thread].bbtrace_fd < 0) {
-            bbv_thread[current_thread].bbtrace_fd=open_tracefile(current_thread);
+            /* If our output file hasn't been opened, open it */
+         if (bbv_thread[current_thread].bbtrace_fp == NULL) {
+            bbv_thread[current_thread].bbtrace_fp=open_tracefile(current_thread);
          }
 
            /* put an entry to the bb.out file */
-         Int fd = bbv_thread[current_thread].bbtrace_fd;
 
-         VG_(fdprintf)(fd, "T");
+         VG_(fprintf)(bbv_thread[current_thread].bbtrace_fp, "T");
 
          VG_(OSetGen_ResetIter)(instr_info_table);
          while ( (bb_elem = VG_(OSetGen_Next)(instr_info_table)) ) {
             if ( bb_elem->inst_counter[current_thread] != 0 ) {
-               VG_(fdprintf)(fd, ":%d:%d   ",
-                         bb_elem->block_num,
-                         bb_elem->inst_counter[current_thread]);
+               VG_(fprintf)(bbv_thread[current_thread].bbtrace_fp, ":%d:%d   ",
+                            bb_elem->block_num,
+                            bb_elem->inst_counter[current_thread]);
                bb_elem->inst_counter[current_thread] = 0;
             }
          }
 
-         VG_(fdprintf)(fd, "\n");
+         VG_(fprintf)(bbv_thread[current_thread].bbtrace_fp, "\n");
       }
 
       bbv_thread[current_thread].dyn_instr -= interval_size;
@@ -395,7 +391,7 @@ static IRSB* bbv_instrument ( VgCallbackClosure* closure,
       bbInfo->block_num=block_num;
       block_num++;
          /* get function name and entry point information */
-      HChar *fn_name;
+      const HChar *fn_name;
       bbInfo->is_entry=VG_(get_fnname_if_entry)(origAddr, &fn_name);
       bbInfo->fn_name =VG_(strdup)("bbv_strings", fn_name);
          /* insert structure into table */
@@ -478,7 +474,7 @@ static struct thread_info *allocate_new_thread(struct thread_info *old,
       temp[i].unique_rep_count=0;
       temp[i].rep_count=0;
       temp[i].fldcw_count=0;
-      temp[i].bbtrace_fd=-1;
+      temp[i].bbtrace_fp=NULL;
    }
       /* expand the inst_counter on all allocated basic blocks */
    VG_(OSetGen_ResetIter)(instr_info_table);
@@ -584,12 +580,12 @@ static void bbv_fini(Int exitcode)
          VG_(umsg)("%s\n", buf);
 
             /* open the output file if it hasn't already */
-         if (bbv_thread[i].bbtrace_fd < 0) {
-            bbv_thread[i].bbtrace_fd=open_tracefile(i);
+         if (bbv_thread[i].bbtrace_fp == NULL) {
+            bbv_thread[i].bbtrace_fp=open_tracefile(i);
          }
             /* Also print to results file */
-         VG_(write)(bbv_thread[i].bbtrace_fd,buf,VG_(strlen)(buf));
-         VG_(close)(bbv_thread[i].bbtrace_fd);
+         VG_(fprintf)(bbv_thread[i].bbtrace_fp, "%s", buf);
+         VG_(fclose)(bbv_thread[i].bbtrace_fp);
       }
    }
 }

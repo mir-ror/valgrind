@@ -424,10 +424,10 @@ fn_node* get_fn_node_inseg(DebugInfo* di,
 
 
 Bool CLG_(get_debug_info)(Addr instr_addr,
-			 HChar **dir,
-			 HChar **file,
-			 HChar **fn_name, UInt* line_num,
-			 DebugInfo** pDebugInfo)
+                          const HChar **dir,
+                          const HChar **file,
+                          const HChar **fn_name, UInt* line_num,
+                          DebugInfo** pDebugInfo)
 {
   Bool found_file_line, found_fn, found_dirname, result = True;
   UInt line;
@@ -445,17 +445,12 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
 					       dir,
 					       &found_dirname,
 					       &line);
-   found_fn = VG_(get_fnname)(instr_addr,
-			      fn_name);
-
-   if (!found_dirname) {
-      *dir = (HChar *)"";   // FIXME: constification
-   }
+   found_fn = VG_(get_fnname)(instr_addr, fn_name);
 
    if (!found_file_line && !found_fn) {
      CLG_(stat).no_debug_BBs++;
-     *file = (HChar *)"???";   // FIXME: constification
-     *fn_name = (HChar *)"???";   // FIXME: constification
+     *file = "???";
+     *fn_name = "???";
      if (line_num) *line_num=0;
      result = False;
 
@@ -465,12 +460,12 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
 
    } else if ( found_file_line && !found_fn) {
      CLG_(stat).file_line_debug_BBs++;
-     *fn_name = (HChar *)"???";   // FIXME: constification
+     *fn_name = "???";
      if (line_num) *line_num=line;
 
    } else  /*(!found_file_line &&  found_fn)*/ {
      CLG_(stat).fn_name_debug_BBs++;
-     *file = (HChar *)"???";   // FIXME: constification
+     *file = "???";
      if (line_num) *line_num=0;
    }
 
@@ -493,7 +488,7 @@ static BB* exit_bb = 0;
  */
 fn_node* CLG_(get_fn_node)(BB* bb)
 {
-    HChar      *filename, *dirname, *fnname;
+    const HChar *fnname, *filename, *dirname;
     DebugInfo* di;
     UInt       line_num;
     fn_node*   fn;
@@ -549,7 +544,7 @@ fn_node* CLG_(get_fn_node)(BB* bb)
 	(bb_addr(bb) >= runtime_resolve_addr) &&
 	(bb_addr(bb) < runtime_resolve_addr + runtime_resolve_length)) {
 	/* BB in runtime_resolve found by code check; use this name */
-      fnname = (HChar *)"_dl_runtime_resolve";  // FIXME: constification
+      fnname = "_dl_runtime_resolve";
     }
 
     /* get fn_node struct for this function */
@@ -595,12 +590,12 @@ fn_node* CLG_(get_fn_node)(BB* bb)
     bb->line = line_num;
 
     if (dirname[0]) {
-       CLG_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s/%s:%u)\n",
-                 bb_addr(bb), fnname, dirname, filename, line_num);
-    } else {
        CLG_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s:%u)\n",
                  bb_addr(bb), fnname, filename, line_num);
-    }
+    } else
+       CLG_DEBUG(3,"- get_fn_node(BB %#lx): %s (in %s/%s:%u)\n",
+                 bb_addr(bb), fnname, dirname, filename, line_num);
+
     return fn;
 }
 

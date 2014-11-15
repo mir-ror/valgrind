@@ -880,6 +880,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_inotify_add_watch, sys_inotify_add_watch), // 27
    LINX_(__NR_inotify_rm_watch,  sys_inotify_rm_watch),  // 28
    LINXY(__NR_ioctl,             sys_ioctl),             // 29
+   LINX_(__NR_mknodat,           sys_mknodat),           // 33
    LINX_(__NR_mkdirat,           sys_mkdirat),           // 34
    LINX_(__NR_unlinkat,          sys_unlinkat),          // 35
    LINX_(__NR_symlinkat,         sys_symlinkat),         // 36
@@ -896,7 +897,12 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_fallocate,         sys_fallocate),         // 47
    LINX_(__NR_faccessat,         sys_faccessat),         // 48
    GENX_(__NR_chdir,             sys_chdir),             // 49
+   GENX_(__NR_fchdir,            sys_fchdir),            // 50
+   GENX_(__NR_chroot,            sys_chroot),            // 51
+   GENX_(__NR_fchmod,            sys_fchmod),            // 52
    LINX_(__NR_fchmodat,          sys_fchmodat),          // 53
+   LINX_(__NR_fchownat,          sys_fchownat),          // 54
+   GENX_(__NR_fchown,            sys_fchown),            // 55
    LINXY(__NR_openat,            sys_openat),            // 56
    GENXY(__NR_close,             sys_close),             // 57
    LINXY(__NR_pipe2,             sys_pipe2),             // 59
@@ -910,6 +916,7 @@ static SyscallTableEntry syscall_main_table[] = {
    GENX_(__NR_write,             sys_write),             // 64
    GENXY(__NR_readv,             sys_readv),             // 65
    GENX_(__NR_writev,            sys_writev),            // 66
+   GENXY(__NR_pread64,           sys_pread64),           // 67
    GENX_(__NR_pwrite64,          sys_pwrite64),          // 68
    LINX_(__NR_pselect6,          sys_pselect6),          // 72
    LINXY(__NR_ppoll,             sys_ppoll),             // 73
@@ -922,6 +929,7 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINX_(__NR_utimensat,         sys_utimensat),         // 88
    GENX_(__NR_fsync,             sys_fsync),             // 82
+   GENX_(__NR_fdatasync,         sys_fdatasync),         // 83
    LINXY(__NR_timerfd_create,    sys_timerfd_create),    // 85
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),   // 86
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),   // 87
@@ -950,11 +958,18 @@ static SyscallTableEntry syscall_main_table[] = {
    PLAX_(__NR_rt_sigreturn,      sys_rt_sigreturn),      // 139
    GENX_(__NR_setpriority,       sys_setpriority),       // 140
    GENX_(__NR_getpriority,       sys_getpriority),       // 141
+   GENX_(__NR_setregid,          sys_setregid),          // 143
+   GENX_(__NR_setreuid,          sys_setreuid),          // 145
    LINX_(__NR_setresuid,         sys_setresuid),         // 147
    LINXY(__NR_getresuid,         sys_getresuid),         // 148
    LINXY(__NR_getresgid,         sys_getresgid),         // 150
+   GENXY(__NR_times,             sys_times),             // 153
    GENX_(__NR_setpgid,           sys_setpgid),           // 154
    GENX_(__NR_getpgid,           sys_getpgid),           // 155
+   GENX_(__NR_getsid,            sys_getsid),            // 156
+   GENX_(__NR_setsid,            sys_setsid),            // 157
+   GENXY(__NR_getgroups,         sys_getgroups),         // 158
+   GENX_(__NR_setgroups,         sys_setgroups),         // 159
    GENXY(__NR_uname,             sys_newuname),          // 160
    GENXY(__NR_getrlimit,         sys_old_getrlimit),     // 163
    GENX_(__NR_setrlimit,         sys_setrlimit),         // 164
@@ -1013,6 +1028,7 @@ static SyscallTableEntry syscall_main_table[] = {
    PLAX_(__NR3264_fadvise64,     sys_fadvise64),         // 223
 
    GENXY(__NR_mprotect,          sys_mprotect),          // 226
+   GENX_(__NR_msync,             sys_msync),             // 227
    GENX_(__NR_mlock,             sys_mlock),             // 228
    GENX_(__NR_mlockall,          sys_mlockall),          // 230
    GENX_(__NR_madvise,           sys_madvise),           // 233
@@ -1020,6 +1036,7 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv),  // 270
    LINX_(__NR_process_vm_writev, sys_process_vm_writev), // 271
+   LINXY(__NR_getrandom,         sys_getrandom),         // 278
 
 // The numbers below are bogus.  (See comment further down.)
 // When pulling entries above this line, change the numbers
@@ -1068,7 +1085,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ 
 //ZZ    GENX_(__NR_rmdir,             sys_rmdir),          // 40
 //ZZ    LINXY(__NR_pipe,              sys_pipe),           // 42
-//ZZ    GENXY(__NR_times,             sys_times),          // 43
 //ZZ //   GENX_(__NR_prof,              sys_ni_syscall),     // 44
 
 //ZZ    LINX_(__NR_setgid,            sys_setgid16),       // 46
@@ -1086,19 +1102,15 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ //   GENX_(__NR_ulimit,            sys_ni_syscall),     // 58
 //ZZ //zz    //   (__NR_oldolduname,       sys_olduname),       // 59 Linux -- obsolete
 //ZZ //zz 
-//ZZ    GENX_(__NR_chroot,            sys_chroot),         // 61
 //ZZ //zz    //   (__NR_ustat,             sys_ustat)           // 62 SVr4 -- deprecated
 //ZZ    GENXY(__NR_dup2,              sys_dup2),           // 63
 //ZZ    GENX_(__NR_getppid,           sys_getppid),        // 64
 //ZZ 
 //ZZ    GENX_(__NR_getpgrp,           sys_getpgrp),        // 65
-//ZZ    GENX_(__NR_setsid,            sys_setsid),         // 66
 //ZZ    LINXY(__NR_sigaction,         sys_sigaction),      // 67
 //ZZ //zz    //   (__NR_sgetmask,          sys_sgetmask),       // 68 */* (ANSI C)
 //ZZ //zz    //   (__NR_ssetmask,          sys_ssetmask),       // 69 */* (ANSI C)
 //ZZ //zz 
-//ZZ    LINX_(__NR_setreuid,          sys_setreuid16),     // 70
-//ZZ    LINX_(__NR_setregid,          sys_setregid16),     // 71
 //ZZ    PLAX_(__NR_sigsuspend,        sys_sigsuspend),     // 72
 //ZZ    LINXY(__NR_sigpending,        sys_sigpending),     // 73
 //ZZ //zz    //   (__NR_sethostname,       sys_sethostname),    // 74 */*
@@ -1122,7 +1134,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    GENXY(__NR_munmap,            sys_munmap),         // 91
 //ZZ    GENX_(__NR_truncate,          sys_truncate),       // 92
 //ZZ    GENX_(__NR_ftruncate,         sys_ftruncate),      // 93
-//ZZ    GENX_(__NR_fchmod,            sys_fchmod),         // 94
 //ZZ 
 //ZZ    LINX_(__NR_fchown,            sys_fchown16),       // 95
 //ZZ //   GENX_(__NR_profil,            sys_ni_syscall),     // 98
@@ -1161,7 +1172,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ //zz    // Nb: get_kernel_syms() was removed 2.4-->2.6
 //ZZ //   GENX_(__NR_get_kernel_syms,   sys_ni_syscall),     // 130
 //ZZ    GENX_(__NR_getpgid,           sys_getpgid),        // 132
-//ZZ    GENX_(__NR_fchdir,            sys_fchdir),         // 133
 //ZZ //zz    //   (__NR_bdflush,           sys_bdflush),        // 134 */Linux
 //ZZ //zz 
 //ZZ //zz    //   (__NR_sysfs,             sys_sysfs),          // 135 SVr4
@@ -1174,10 +1184,7 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    GENXY(__NR_getdents,          sys_getdents),       // 141
 //ZZ    GENX_(__NR__newselect,        sys_select),         // 142
 //ZZ    GENX_(__NR_flock,             sys_flock),          // 143
-//ZZ    GENX_(__NR_msync,             sys_msync),          // 144
 //ZZ 
-//ZZ    GENX_(__NR_getsid,            sys_getsid),         // 147
-//ZZ    GENX_(__NR_fdatasync,         sys_fdatasync),      // 148
 //ZZ    LINXY(__NR__sysctl,           sys_sysctl),         // 149
 //ZZ 
 //ZZ    GENX_(__NR_munlock,           sys_munlock),        // 151
@@ -1207,7 +1214,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINXY(__NR_rt_sigpending,     sys_rt_sigpending),  // 176
 //ZZ    LINXY(__NR_rt_sigtimedwait,   sys_rt_sigtimedwait),// 177
 //ZZ 
-//ZZ    GENXY(__NR_pread64,           sys_pread64),        // 180
 //ZZ    LINX_(__NR_chown,             sys_chown16),        // 182
 //ZZ 
 //ZZ    LINX_(__NR_capset,            sys_capset),         // 185
@@ -1233,9 +1239,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    GENX_(__NR_setreuid32,        sys_setreuid),       // 203
 //ZZ    GENX_(__NR_setregid32,        sys_setregid),       // 204
 //ZZ 
-//ZZ    GENXY(__NR_getgroups32,       sys_getgroups),      // 205
-//ZZ    GENX_(__NR_setgroups32,       sys_setgroups),      // 206
-//ZZ    GENX_(__NR_fchown32,          sys_fchown),         // 207
 //ZZ    LINX_(__NR_setresuid32,       sys_setresuid),      // 208
 //ZZ    LINXY(__NR_getresuid32,       sys_getresuid),      // 209
 //ZZ 
@@ -1329,8 +1332,6 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINX_(__NR_inotify_init,    sys_inotify_init),   // 291
 //ZZ //   LINX_(__NR_migrate_pages,    sys_migrate_pages),    // 294
 //ZZ 
-//ZZ    LINX_(__NR_mknodat,       sys_mknodat),          // 297
-//ZZ    LINX_(__NR_fchownat,       sys_fchownat),         // 298
 //ZZ    LINX_(__NR_futimesat,    sys_futimesat),        // 326 on arm
 //ZZ 
 //ZZ    PLAXY(__NR_fstatat64,    sys_fstatat64),        // 300

@@ -1,3 +1,4 @@
+/* -*- mode: C; c-basic-offset: 3; -*- */
 
 /*--------------------------------------------------------------------*/
 /*--- Libc printing.                                 m_libcprint.c ---*/
@@ -37,6 +38,7 @@
 #include "pub_core_libcfile.h"   // VG_(write)(), VG_(write_socket)()
 #include "pub_core_libcprint.h"
 #include "pub_core_libcproc.h"   // VG_(getpid)(), VG_(read_millisecond_timer()
+#include "pub_core_mallocfree.h" // VG_(malloc)
 #include "pub_core_options.h"
 #include "pub_core_clreq.h"      // For RUNNING_ON_VALGRIND
 
@@ -294,59 +296,70 @@ void VG_(vcbprintf)( void(*char_sink)(HChar, void* opaque),
 }
 
 
-/* --------- fdprintf ---------- */
+/* --------- fprintf ---------- */
 
 /* This is like [v]fprintf, except it writes to a file handle using
    VG_(write). */
 
-#define FDPRINTF_BUFSIZE  1024
+#define VGFILE_BUFSIZE  8192
 
-typedef struct {
-   HChar buf[FDPRINTF_BUFSIZE];
+struct _VgFile {
+   HChar buf[VGFILE_BUFSIZE];
    UInt  num_chars;   // number of characters in buf
    Int   fd;          // file descriptor to write to
-} fdprintf_buf;
+};
 
 
-static void add_to__fdprintf_buf ( HChar c, void *p )
+static void add_to__vgfile ( HChar c, void *p )
 {
-   fdprintf_buf *b = p;
+   VgFile *fp = p;
 
-   b->buf[b->num_chars++] = c;
+   fp->buf[fp->num_chars++] = c;
 
-   if (b->num_chars == FDPRINTF_BUFSIZE) {
-      VG_(write)(b->fd, b->buf, b->num_chars);
-      b->num_chars = 0;
+   if (fp->num_chars == VGFILE_BUFSIZE) {
+      VG_(write)(fp->fd, fp->buf, fp->num_chars);
+      fp->num_chars = 0;
    }
 }
 
-
-UInt VG_(vfdprintf) ( Int fd, const HChar *format, va_list vargs )
+VgFile *VG_(fopen)(const HChar *name, Int flags, Int mode)
 {
-   Int ret;
-   fdprintf_buf b;
+   SysRes res = VG_(open)(name, flags, mode);
 
-   b.fd = fd;
-   b.num_chars = 0;
+   if (sr_isError(res))
+      return NULL;
 
-   ret = VG_(debugLog_vprintf) 
-            ( add_to__fdprintf_buf, &b, format, vargs );
+   VgFile *fp = VG_(malloc)("fopen", sizeof(VgFile));
 
-   // Flush the buffer.
-   if (b.num_chars)
-      VG_(write)(b.fd, b.buf, b.num_chars);
+   fp->fd = sr_Res(res);
+   fp->num_chars = 0;
 
-   return ret;
+   return fp;
 }
 
-UInt VG_(fdprintf) ( Int fd, const HChar *format, ... )
+
+UInt VG_(vfprintf) ( VgFile *fp, const HChar *format, va_list vargs )
+{
+   return VG_(debugLog_vprintf)(add_to__vgfile, fp, format, vargs);
+}
+
+UInt VG_(fprintf) ( VgFile *fp, const HChar *format, ... )
 {
    UInt ret;
    va_list vargs;
    va_start(vargs,format);
-   ret = VG_(vfdprintf)(fd, format, vargs);
+   ret = VG_(vfprintf)(fp, format, vargs);
    va_end(vargs);
    return ret;
+}
+
+void VG_(fclose)( VgFile *fp )
+{
+   // Flush the buffer.
+   if (fp->num_chars)
+      VG_(write)(fp->fd, fp->buf, fp->num_chars);
+
+   VG_(free)(fp);
 }
 
 /* ---------------------------------------------------------------------
@@ -411,9 +424,11 @@ void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, HChar buf[])
    millisecond timer having been set to zero by an initial read in
    m_main during startup. */
 
-void VG_(elapsed_wallclock_time) ( /*OUT*/HChar* buf )
+void VG_(elapsed_wallclock_time) ( /*OUT*/HChar* buf, SizeT bufsize )
 {
    UInt t, ms, s, mins, hours, days;
+
+   vg_assert(bufsize > 20);
 
    t  = VG_(read_millisecond_timer)(); /* milliseconds */
 
@@ -521,9 +536,7 @@ static void add_to__vmessage_buf ( HChar c, void *p )
          b->buf[b->buf_used++] = ch;
 
          if (VG_(clo_time_stamp)) {
-            VG_(memset)(tmp, 0, sizeof(tmp));
-            VG_(elapsed_wallclock_time)(tmp);
-            tmp[sizeof(tmp)-1] = 0;
+            VG_(elapsed_wallclock_time)(tmp, sizeof tmp);
             for (i = 0; tmp[i]; i++)
                b->buf[b->buf_used++] = tmp[i];
          }
@@ -619,8 +632,8 @@ void VG_(fmsg_bad_option) ( const HChar* opt, const HChar* format, ... )
    VG_(message) (Vg_FailMsg, "Bad option: %s\n", opt);
    VG_(vmessage)(Vg_FailMsg, format, vargs );
    VG_(message) (Vg_FailMsg, "Use --help for more information or consult the user manual.\n");
-   VG_(exit)(1);
    va_end(vargs);
+   VG_(exit)(1);
 }
 
 UInt VG_(umsg) ( const HChar* format, ... )
@@ -670,12 +683,11 @@ void VG_(err_config_error) ( const HChar* format, ... )
    VG_(message) (Vg_FailMsg, "Startup or configuration error:\n   ");
    VG_(vmessage)(Vg_FailMsg, format, vargs );
    VG_(message) (Vg_FailMsg, "Unable to start up properly.  Giving up.\n");
-   VG_(exit)(1);
    va_end(vargs);
+   VG_(exit)(1);
 }
 
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/
-

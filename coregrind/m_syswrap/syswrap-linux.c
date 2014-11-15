@@ -3004,6 +3004,19 @@ POST(sys_move_pages)
    POST_MEM_WRITE(ARG5, ARG2 * sizeof(int));
 }
 
+PRE(sys_getrandom)
+{
+   PRINT("sys_getrandom ( %#lx, %ld, %ld )" , ARG1,ARG2,ARG3);
+   PRE_REG_READ3(int, "getrandom",
+                 char *, buf, vki_size_t, count, unsigned int, flags);
+   PRE_MEM_WRITE( "getrandom(cpu)", ARG1, ARG2 );
+}
+
+POST(sys_getrandom)
+{
+   POST_MEM_WRITE( ARG1, ARG2 );
+}
+
 /* ---------------------------------------------------------------------
    utime wrapper
    ------------------------------------------------------------------ */
@@ -3593,6 +3606,15 @@ PRE(sys_ipc)
    case VKI_SHMGET:
       PRE_REG_READ4(int, "ipc",
                     vki_uint, call, int, first, int, second, int, third);
+      if (ARG4 & VKI_SHM_HUGETLB) {
+         static Bool warning_given = False;
+         ARG4 &= ~VKI_SHM_HUGETLB;
+         if (!warning_given) {
+            warning_given = True;
+            VG_(umsg)(
+               "WARNING: valgrind ignores shmget(shmflg) SHM_HUGETLB\n");
+         }
+      }
       break;
    case VKI_SHMCTL: /* IPCOP_shmctl */
       PRE_REG_READ5(int, "ipc",
@@ -3795,6 +3817,15 @@ PRE(sys_shmget)
 {
    PRINT("sys_shmget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
    PRE_REG_READ3(long, "shmget", vki_key_t, key, vki_size_t, size, int, shmflg);
+   if (ARG3 & VKI_SHM_HUGETLB) {
+      static Bool warning_given = False;
+      ARG3 &= ~VKI_SHM_HUGETLB;
+      if (!warning_given) {
+         warning_given = True;
+         VG_(umsg)(
+            "WARNING: valgrind ignores shmget(shmflg) SHM_HUGETLB\n");
+      }
+   }
 }
 
 PRE(wrap_sys_shmat)
@@ -4371,10 +4402,11 @@ PRE(sys_openat)
    PRE_MEM_RASCIIZ( "openat(filename)", ARG2 );
 
    /* For absolute filenames, dfd is ignored.  If dfd is AT_FDCWD,
-      filename is relative to cwd.  */
+      filename is relative to cwd.  When comparing dfd against AT_FDCWD,
+      be sure only to compare the bottom 32 bits. */
    if (ML_(safe_to_deref)( (void*)ARG2, 1 )
        && *(Char *)ARG2 != '/'
-       && ARG1 != VKI_AT_FDCWD
+       && ((Int)ARG1) != ((Int)VKI_AT_FDCWD)
        && !ML_(fd_allowed)(ARG1, "openat", tid, False))
       SET_STATUS_Failure( VKI_EBADF );
 
@@ -5430,6 +5462,7 @@ PRE(sys_ioctl)
    case VKI_KVM_S390_ENABLE_SIE:
    case VKI_KVM_CREATE_IRQCHIP:
    case VKI_KVM_S390_INITIAL_RESET:
+   case VKI_KVM_KVMCLOCK_CTRL:
 
    /* vhost without parameter */
    case VKI_VHOST_SET_OWNER:
@@ -5480,6 +5513,7 @@ PRE(sys_ioctl)
    case VKI_TCXONC:
    case VKI_TCSBRKP:
    case VKI_TCFLSH:
+   case VKI_TIOCSIG:
       /* These just take an int by value */
       break;
    case VKI_TIOCGWINSZ:
@@ -7052,6 +7086,7 @@ PRE(sys_ioctl)
    case VKI_KVM_CREATE_VM:
    case VKI_KVM_GET_VCPU_MMAP_SIZE:
    case VKI_KVM_CHECK_EXTENSION:
+   case VKI_KVM_SET_TSS_ADDR:
    case VKI_KVM_CREATE_VCPU:
    case VKI_KVM_RUN:
       break;
@@ -8268,6 +8303,7 @@ POST(sys_ioctl)
    case VKI_TCXONC:
    case VKI_TCSBRKP:
    case VKI_TCFLSH:
+   case VKI_TIOCSIG:
       break;
    case VKI_TIOCGWINSZ:
       POST_MEM_WRITE( ARG3, sizeof(struct vki_winsize) );
@@ -9374,9 +9410,11 @@ POST(sys_ioctl)
    case VKI_KVM_GET_VCPU_MMAP_SIZE:
    case VKI_KVM_S390_ENABLE_SIE:
    case VKI_KVM_CREATE_VCPU:
+   case VKI_KVM_SET_TSS_ADDR:
    case VKI_KVM_CREATE_IRQCHIP:
    case VKI_KVM_RUN:
    case VKI_KVM_S390_INITIAL_RESET:
+   case VKI_KVM_KVMCLOCK_CTRL:
       break;
 
 #ifdef ENABLE_XEN

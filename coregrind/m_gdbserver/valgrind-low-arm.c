@@ -144,7 +144,7 @@ Addr thumb_pc (Addr pc)
 
    // pc aligned on 4 bytes. We need to use debug info.
    {
-      HChar *fnname;
+      const HChar *fnname;
       SymAVMAs avmas;
       // If this is a thumb instruction, we need to ask
       // the debug info with the bit0 set

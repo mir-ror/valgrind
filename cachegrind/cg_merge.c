@@ -157,23 +157,16 @@ static void barf ( SOURCE* s, const char* msg )
 // every invocation. Caller must not free it.
 static const char *readline ( SOURCE* s )
 {
-   static char *line = NULL;
-   static size_t linesiz;
-
-   if (line == NULL) {
-      linesiz = 1000;
-      line = malloc(linesiz * sizeof *line);
-      if (line == NULL)
-         mallocFail(s, "readline:");
-   }
+   static char  *line = NULL;
+   static size_t linesiz = 0;
 
    int ch, i = 0;
-   line[0] = 0;
+
    while (1) {
       ch = getc(s->fp);
       if (ch != EOF) {
-          if (i == linesiz - 1) {
-             linesiz += 1000;
+          if (i + 1 >= linesiz) {
+             linesiz += 500;
              line = realloc(line, linesiz * sizeof *line);
              if (line == NULL)
                 mallocFail(s, "readline:");
@@ -195,7 +188,7 @@ static const char *readline ( SOURCE* s )
          }
       }
    }
-   return line[0] != 0 ? line : NULL;
+   return i == 0 ? NULL : line;
 }
 
 static Bool streqn ( const char* s1, const char* s2, size_t n )
@@ -487,7 +480,7 @@ static Bool parse_ULong ( /*OUT*/ULong* res, /*INOUT*/const char** pptr)
    return True;
 }
 
-// str is a line of digits, starting with a line number.  Parse it,
+// str is a line of integers, starting with a line number.  Parse it,
 // returning the first number in *lnno and the rest in a newly
 // allocated Counts struct.  If lnno is non-NULL, treat the first
 // number as a line number and assign it to *lnno instead of
@@ -497,22 +490,19 @@ Counts* splitUpCountsLine ( SOURCE* s, /*OUT*/UWord* lnno, const char* str )
 {
    Bool    ok;
    Counts* counts;
-   Int     n_tmpC = 0, tmpCsize = 50;
-   ULong   *tmpC = malloc(tmpCsize * sizeof *tmpC);
-   if (tmpC == NULL)
-      mallocFail(s, "splitUpCountsLine:");
-     
+   ULong   *tmpC = NULL;
+   UInt     n_tmpC = 0, tmpCsize = 0;
    while (1) {
-      ok = parse_ULong( &tmpC[n_tmpC], &str );
-      if (!ok)
-         break;
-      n_tmpC++;
       if (n_tmpC >= tmpCsize) {
          tmpCsize += 50;
          tmpC = realloc(tmpC, tmpCsize * sizeof *tmpC);
          if (tmpC == NULL)
             mallocFail(s, "splitUpCountsLine:");
       }
+      ok = parse_ULong( &tmpC[n_tmpC], &str );
+      if (!ok)
+         break;
+      n_tmpC++;
    }
    if (*str != 0)
       parseError(s, "garbage in counts line");
@@ -622,8 +612,8 @@ void handle_counts ( SOURCE* s,
 static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
 {
    Int            i;
-   char**         tmp_desclines;
-   unsigned       tmp_desclines_size;
+   char**         tmp_desclines = NULL;
+   unsigned       tmp_desclines_size = 0;
    char*          p;
    int            n_tmp_desclines = 0;
    CacheProfFile* cpf;
@@ -634,11 +624,6 @@ static CacheProfFile* parse_CacheProfFile ( SOURCE* s )
 
    cpf = new_CacheProfFile( NULL, NULL, NULL, 0, NULL, NULL, NULL );
    if (cpf == NULL)
-      mallocFail(s, "parse_CacheProfFile(1)");
-
-   tmp_desclines_size = 100;
-   tmp_desclines = malloc(tmp_desclines_size * sizeof *tmp_desclines);
-   if (tmp_desclines == NULL)
       mallocFail(s, "parse_CacheProfFile(1)");
 
    // Parse "desc:" lines

@@ -93,8 +93,8 @@
        to just store the pointer as it will point to deallocated memory
        after the next VG_(demangle) invocation. */
 void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
-                     /* IN */  HChar* orig,
-                     /* OUT */ HChar** result )
+                     /* IN */  const HChar  *orig,
+                     /* OUT */ const HChar **result )
 {
    /* Possibly undo (2) */
    /* Z-Demangling was requested.  
@@ -102,11 +102,10 @@ void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
       to Z-demangle it (with NULL for the soname buffer, since we're not
       interested in that). */
    if (do_z_demangling) {
-      HChar *z_demangled;
+      const HChar *z_demangled;
 
       if (VG_(maybe_Z_demangle)( orig, NULL, /*soname*/
-                                 &z_demangled, NULL,
-                                 NULL, NULL )) {
+                                 &z_demangled, NULL, NULL, NULL )) {
          orig = z_demangled;
       }
    }
@@ -150,14 +149,32 @@ void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
    function name part. */
 
 Bool VG_(maybe_Z_demangle) ( const HChar* sym, 
-                             /*OUT*/HChar** so,
-                             /*OUT*/HChar** fn,
+                             /*OUT*/const HChar** so,
+                             /*OUT*/const HChar** fn,
                              /*OUT*/Bool* isWrap,
                              /*OUT*/Int*  eclassTag,
                              /*OUT*/Int*  eclassPrio )
 {
-   if (so) so[0] = '\0';
-   fn[0] = '\0';
+   static HChar *sobuf;
+   static HChar *fnbuf;
+   static SizeT  buf_len = 0;
+
+   /* The length of the name after undoing Z-encoding is always smaller
+      than the mangled name. Making the soname and fnname buffers as large
+      as the demangled name is therefore always safe and overflow can never
+      occur. */
+   SizeT len = VG_(strlen)(sym) + 1;
+
+   if (buf_len < len) {
+      sobuf = VG_(arena_realloc)(VG_AR_DEMANGLE, "Z-demangle", sobuf, len);
+      fnbuf = VG_(arena_realloc)(VG_AR_DEMANGLE, "Z-demangle", fnbuf, len);
+      buf_len = len;
+   }
+   sobuf[0] = fnbuf[0] = '\0';
+
+   if (so) 
+     *so = sobuf;
+   *fn = fnbuf;
 
 #  define EMITSO(ch)                           \
       do {                                     \
@@ -200,23 +217,6 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
 
    if (!valid)
       return False;
-
-   static HChar *sobuf;
-   static HChar *fnbuf;
-   static SizeT  buf_len = 0;
-
-   /* The length of the name after undoing Z-encoding is always smaller
-      than the mangled name. Making the soname and fnname buffers as large
-      as the demangled name is therefore always safe and overflow can never
-      occur. */
-   SizeT len = VG_(strlen)(sym) + 1;
-
-   if (buf_len < len) {
-      sobuf = VG_(arena_realloc)(VG_AR_DEMANGLE, "Z-demangle", sobuf, len);
-      fnbuf = VG_(arena_realloc)(VG_AR_DEMANGLE, "Z-demangle", fnbuf, len);
-      buf_len = len;
-      sobuf[0] = fnbuf[0] = '\0';
-   }
 
    fn_is_encoded = sym[10] == 'Z';
 
@@ -340,10 +340,6 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
   out:
    EMITSO(0);
    EMITFN(0);
-
-   if (so) 
-     *so = sobuf;
-   *fn = fnbuf;
 
    if (error) {
       /* Something's wrong.  Give up. */

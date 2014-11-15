@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-// Long function name. MAke sure it is not truncated.
+// Long function name. Make sure it is not truncated.
 
 
 #define A2500 \

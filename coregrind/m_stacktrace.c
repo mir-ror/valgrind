@@ -139,7 +139,7 @@ static UInt fp_CF_verif_generation = 0;
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    const Bool do_stats = False; // compute and output some stats regularly.
@@ -457,7 +457,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    Bool  debug = False;
@@ -628,7 +628,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    Bool  lr_is_first_RA = False;
@@ -717,13 +717,16 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
       frame. */
    lr_is_first_RA = False;
    {
-      HChar *buf_lr, *buf_ip;
+      const HChar *buf_lr, *buf_ip;
       /* The following conditional looks grossly inefficient and
          surely could be majorly improved, with not much effort. */
-      if (VG_(get_fnname_raw) (lr, &buf_lr))
+      if (VG_(get_fnname_raw) (lr, &buf_lr)) {
+         HChar buf_lr_copy[VG_(strlen)(buf_lr) + 1];
+         VG_(strcpy)(buf_lr_copy, buf_lr);
          if (VG_(get_fnname_raw) (ip, &buf_ip))
-            if (VG_(strcmp)(buf_lr, buf_ip))
+            if (VG_(strcmp)(buf_lr_copy, buf_ip))
                lr_is_first_RA = True;
+      }
    }
 
    if (sps) sps[0] = fp; /* NB. not sp */
@@ -814,15 +817,16 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
 static Bool in_same_fn ( Addr a1, Addr a2 )
 {
-#  define M_VG_ERRTXT 500
-   HChar buf_a1[M_VG_ERRTXT], buf_a2[M_VG_ERRTXT];
+   const HChar *buf_a1, *buf_a2;
    /* The following conditional looks grossly inefficient and
       surely could be majorly improved, with not much effort. */
-   if (VG_(get_fnname_raw) (a1, buf_a1, M_VG_ERRTXT))
-      if (VG_(get_fnname_raw) (a2, buf_a2, M_VG_ERRTXT))
-         if (VG_(strncmp)(buf_a1, buf_a2, M_VG_ERRTXT))
+   if (VG_(get_fnname_raw) (a1, &buf_a1)) {
+      HChar buf_a1_copy[VG_(strlen)(buf_a1) + 1];
+      VG_(strcpy)(buf_a1_copy, buf_a1);
+      if (VG_(get_fnname_raw) (a2, &buf_a2))
+         if (VG_(strcmp)(buf_a1_copy, buf_a2))
             return True;
-#  undef M_VG_ERRTXT
+   }
    return False;
 }
 
@@ -896,7 +900,7 @@ static Bool looks_like_RA ( Addr ra )
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    Bool  debug = False;
@@ -1042,7 +1046,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    Bool  debug = False;
@@ -1138,7 +1142,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    Bool  debug = False;
@@ -1221,7 +1225,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
-                               UnwindStartRegs* startRegs,
+                               const UnwindStartRegs* startRegs,
                                Addr fp_max_orig )
 {
    Bool  debug = False;

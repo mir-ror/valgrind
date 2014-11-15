@@ -1448,8 +1448,8 @@ Bool VG_(translate) ( ThreadId tid,
    if ((kind == T_Redir_Wrap || kind == T_Redir_Replace)
        && (VG_(clo_verbosity) >= 2 || VG_(clo_trace_redir))) {
       Bool ok;
-      HChar *buf;
-      HChar *name2;
+      const HChar *buf;
+      const HChar *name2;
 
       /* Try also to get the soname (not the filename) of the "from"
          object.  This makes it much easier to debug redirection
@@ -1463,12 +1463,12 @@ Bool VG_(translate) ( ThreadId tid,
       }
 
       ok = VG_(get_fnname_w_offset)(nraddr, &buf);
-      if (!ok) buf = (HChar *)"???";  // FIXME: constification
+      if (!ok) buf = "???";
       // Stash away name1
       HChar name1[VG_(strlen)(buf) + 1];
       VG_(strcpy)(name1, buf);
       ok = VG_(get_fnname_w_offset)(addr, &name2);
-      if (!ok) name2 = (HChar *)"???"; // FIXME: constification
+      if (!ok) name2 = "???";
 
       VG_(message)(Vg_DebugMsg, 
                    "REDIR: 0x%llx (%s:%s) redirected to 0x%llx (%s)\n",
@@ -1491,9 +1491,9 @@ Bool VG_(translate) ( ThreadId tid,
       }
       vg_assert(objname);
  
-      HChar *fnname;
+      const HChar *fnname;
       Bool ok = VG_(get_fnname_w_offset)(addr, &fnname);
-      if (!ok) fnname = (HChar *)"UNKNOWN_FUNCTION";  // FIXME: constification
+      if (!ok) fnname = "UNKNOWN_FUNCTION";
       VG_(printf)(
          "==== SB %d (evchecks %lld) [tid %d] 0x%llx %s %s+0x%llx\n",
          VG_(get_bbs_translated)(), bbs_done, (Int)tid, addr,
@@ -1636,9 +1636,7 @@ Bool VG_(translate) ( ThreadId tid,
              : VG_(tdict).tool_instrument;
      IRSB*(*g)(void*,
                IRSB*,const VexGuestLayout*,const VexGuestExtents*,
-               const VexArchInfo*,IRType,IRType)
-       = (IRSB*(*)(void*,IRSB*,const VexGuestLayout*,
-                   const VexGuestExtents*, const VexArchInfo*,IRType,IRType))f;
+               const VexArchInfo*,IRType,IRType) = (__typeof__(g)) f;
      vta.instrument1     = g;
    }
    /* No need for type kludgery here. */

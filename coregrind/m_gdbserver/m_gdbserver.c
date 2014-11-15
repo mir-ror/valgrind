@@ -148,13 +148,11 @@ static HChar* sym (Addr addr, Bool is_code)
    if (is_code) {
       const HChar *name;
       name = VG_(describe_IP) (addr, NULL);
-      // FIXME: is this called often? if so do something with realloc
       if (buf[w]) VG_(free)(buf[w]);
       buf[w] = VG_(strdup)("gdbserver sym", name);
    } else {
-      HChar *name;
+      const HChar *name;
       VG_(get_datasym_and_offset) (addr, &name, &offset);
-      // FIXME: is this called often? if so do something with realloc
       if (buf[w]) VG_(free)(buf[w]);
       buf[w] = VG_(strdup)("gdbserver sym", name);
    }
@@ -202,7 +200,7 @@ typedef
 
    Note for ARM: addr in GS_Address is the value without the thumb bit set.
 */
-static VgHashTable gs_addresses = NULL;
+static VgHashTable *gs_addresses = NULL;
 
 // Transform addr in the form stored in the list of addresses.
 // For the ARM architecture, we store it with the thumb bit set to 0.

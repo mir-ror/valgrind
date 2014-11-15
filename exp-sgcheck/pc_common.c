@@ -134,7 +134,7 @@ typedef
             Seg*     vseg;
             XArray*  descr1; /* XArray* of HChar */
             XArray*  descr2; /* XArray* of HChar */
-            HChar*   datasym;
+            const HChar* datasym;
             PtrdiffT datasymoff;
          } Heap;
          struct {
@@ -216,7 +216,7 @@ void h_record_sysparam_error( ThreadId tid, CorePart part, const HChar* s,
 }
 
 
-Bool pc_eq_Error ( VgRes res, Error* e1, Error* e2 )
+Bool pc_eq_Error ( VgRes res, const Error* e1, const Error* e2 )
 {
    XError *xe1, *xe2;
    tl_assert(VG_(get_error_kind)(e1) == VG_(get_error_kind)(e2));
@@ -262,7 +262,7 @@ Bool pc_eq_Error ( VgRes res, Error* e1, Error* e2 )
    look at it any print any preamble you want" function.  Which, in
    Ptrcheck, we don't use.  Hence a no-op.
 */
-void pc_before_pp_Error ( Error* err ) {
+void pc_before_pp_Error ( const Error* err ) {
 }
 
 /* Do a printf-style operation on either the XML or normal output
@@ -302,7 +302,7 @@ static Word Word__abs ( Word w ) {
    return w < 0 ? -w : w;
 }
 
-void pc_pp_Error ( Error* err )
+void pc_pp_Error ( const Error* err )
 {
    const Bool xml = VG_(clo_xml); /* a shorthand, that's all */
 
@@ -647,7 +647,7 @@ void pc_pp_Error ( Error* err )
 }
 
 
-UInt pc_update_Error_extra ( Error* err )
+UInt pc_update_Error_extra ( const Error* err )
 {
    XError *xe = (XError*)VG_(get_error_extra)(err);
    tl_assert(xe);
@@ -697,7 +697,7 @@ UInt pc_update_Error_extra ( Error* err )
          /* If Dwarf3 info produced nothing useful, see at least if
             we can fish something useful out of the ELF symbol info. */
          if (!have_descr) {
-            HChar *name;
+            const HChar *name;
             if (VG_(get_datasym_and_offset)(
                    xe->XE.Heap.addr, &name,
                    &xe->XE.Heap.datasymoff )
@@ -734,7 +734,8 @@ Bool pc_is_recognised_suppression ( const HChar* name, Supp *su )
 }
 
 Bool pc_read_extra_suppression_info ( Int fd, HChar** bufpp, 
-                                      SizeT* nBufp, Int* lineno, Supp* su )
+                                      SizeT* nBufp, Int* lineno,
+                                      Supp* su )
 {
    Bool eof;
    if (VG_(get_supp_kind)(su) == XS_SysParam) {
@@ -745,7 +746,7 @@ Bool pc_read_extra_suppression_info ( Int fd, HChar** bufpp,
    return True;
 }
 
-Bool pc_error_matches_suppression (Error* err, Supp* su)
+Bool pc_error_matches_suppression (const Error* err, const Supp* su)
 {
    ErrorKind ekind = VG_(get_error_kind)(err);
    switch (VG_(get_supp_kind)(su)) {
@@ -762,7 +763,7 @@ Bool pc_error_matches_suppression (Error* err, Supp* su)
    }
 }
 
-const HChar* pc_get_error_name ( Error* err )
+const HChar* pc_get_error_name ( const Error* err )
 {
    XError *xe = (XError*)VG_(get_error_extra)(err);
    tl_assert(xe);
@@ -775,7 +776,7 @@ const HChar* pc_get_error_name ( Error* err )
    }
 }
 
-SizeT pc_get_extra_suppression_info ( Error* err,
+SizeT pc_get_extra_suppression_info ( const Error* err,
                                       /*OUT*/HChar* buf, Int nBuf )
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
@@ -792,7 +793,7 @@ SizeT pc_get_extra_suppression_info ( Error* err,
    }
 }
 
-SizeT pc_print_extra_suppression_use ( Supp* su,
+SizeT pc_print_extra_suppression_use ( const Supp* su,
                                        /*OUT*/HChar* buf, Int nBuf )
 {
    tl_assert(nBuf >= 1);
@@ -800,7 +801,7 @@ SizeT pc_print_extra_suppression_use ( Supp* su,
    return 0;
 }
 
-void pc_update_extra_suppression_use (Error* err, Supp* su)
+void pc_update_extra_suppression_use (const Error* err, const Supp* su)
 {
    return;
 }

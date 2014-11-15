@@ -97,7 +97,7 @@ typedef
 
 typedef struct {
    HChar* file;
-   HChar* fn;
+   const HChar* fn;
    Int    line;
 }
 CodeLoc;
@@ -190,7 +190,7 @@ static Word stringCmp( const void* key, const void* elem )
 
 // Get a permanent string;  either pull it out of the string table if it's
 // been encountered before, or dup it and put it into the string table.
-static HChar* get_perm_string(HChar* s)
+static HChar* get_perm_string(const HChar* s)
 {
    HChar** s_ptr = VG_(OSetGen_Lookup)(stringTable, &s);
    if (s_ptr) {
@@ -207,9 +207,8 @@ static HChar* get_perm_string(HChar* s)
 /*--- CC table operations                                  ---*/
 /*------------------------------------------------------------*/
 
-static void get_debug_info(Addr instr_addr, HChar **dir,
-                           HChar **file,
-                           HChar **fn, UInt* line)
+static void get_debug_info(Addr instr_addr, const HChar **dir,
+                           const HChar **file, const HChar **fn, UInt* line)
 {
    Bool found_dirname;
    Bool found_file_line = VG_(get_filename_linenum)(
@@ -220,17 +219,13 @@ static void get_debug_info(Addr instr_addr, HChar **dir,
    Bool found_fn        = VG_(get_fnname)(instr_addr, fn);
 
    if (!found_file_line) {
-      *file = (HChar *)"???";  // FIXME: constification
+      *file = "???";
       *line = 0;
    }
    if (!found_fn) {
-      *fn = (HChar *)"???";    // FIXME: constification
+      *fn = "???";
    }
 
-   if (!found_dirname) {
-     *dir = (HChar *)"";    // FIXME: constification
-   }
-   
    if (found_file_line) {
       if (found_fn) full_debugs++;
       else          file_line_debugs++;
@@ -244,7 +239,7 @@ static void get_debug_info(Addr instr_addr, HChar **dir,
 // Returns a pointer to the line CC, creates a new one if necessary.
 static LineCC* get_lineCC(Addr origAddr)
 {
-   HChar   *file, *dir, *fn;
+   const HChar *fn, *file, *dir;
    UInt    line;
    CodeLoc loc;
    LineCC* lineCC;
@@ -259,6 +254,7 @@ static LineCC* get_lineCC(Addr origAddr)
    } else {
       VG_(sprintf)(absfile, "%s", file);
    }
+
    loc.file = absfile;
    loc.fn   = fn;
    loc.line = line;
@@ -1378,9 +1374,10 @@ static BranchCC Bi_total;
 
 static void fprint_CC_table_and_calc_totals(void)
 {
-   Int     i, fd;
-   SysRes  sres;
-   HChar   *currFile = NULL, *currFn = NULL;
+   Int     i;
+   VgFile  *fp;
+   HChar   *currFile = NULL;
+   const HChar *currFn = NULL;
    LineCC* lineCC;
 
    // Setup output filename.  Nb: it's important to do this now, ie. as late
@@ -1391,9 +1388,9 @@ static void fprint_CC_table_and_calc_totals(void)
    HChar* cachegrind_out_file =
       VG_(expand_file_name)("--cachegrind-out-file", clo_cachegrind_out_file);
 
-   sres = VG_(open)(cachegrind_out_file, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
-                                         VKI_S_IRUSR|VKI_S_IWUSR);
-   if (sr_isError(sres)) {
+   fp = VG_(fopen)(cachegrind_out_file, VKI_O_CREAT|VKI_O_TRUNC|VKI_O_WRONLY,
+                                        VKI_S_IRUSR|VKI_S_IWUSR);
+   if (fp == NULL) {
       // If the file can't be opened for whatever reason (conflict
       // between multiple cachegrinded processes?), give up now.
       VG_(umsg)("error: can't open cache simulation output file '%s'\n",
@@ -1402,40 +1399,36 @@ static void fprint_CC_table_and_calc_totals(void)
       VG_(free)(cachegrind_out_file);
       return;
    } else {
-      fd = sr_Res(sres);
       VG_(free)(cachegrind_out_file);
    }
 
    // "desc:" lines (giving I1/D1/LL cache configuration).  The spaces after
    // the 2nd colon makes cg_annotate's output look nicer.
-   VG_(fdprintf)(fd, "desc: I1 cache:         %s\n"
+   VG_(fprintf)(fp,  "desc: I1 cache:         %s\n"
                      "desc: D1 cache:         %s\n"
                      "desc: LL cache:         %s\n",
                      I1.desc_line, D1.desc_line, LL.desc_line);
 
    // "cmd:" line
-   VG_(fdprintf)(fd, "cmd: %s", VG_(args_the_exename));
+   VG_(fprintf)(fp, "cmd: %s", VG_(args_the_exename));
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       HChar* arg = * (HChar**) VG_(indexXA)( VG_(args_for_client), i );
-      if (arg) {
-         VG_(fdprintf)(fd, " %s", arg);
-      }
+      VG_(fprintf)(fp, " %s", arg);
    }
    // "events:" line
    if (clo_cache_sim && clo_branch_sim) {
-      VG_(fdprintf)(fd, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
+      VG_(fprintf)(fp, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
                                   "Bc Bcm Bi Bim\n");
    }
    else if (clo_cache_sim && !clo_branch_sim) {
-      VG_(fdprintf)(fd, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
+      VG_(fprintf)(fp, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
                                   "\n");
    }
    else if (!clo_cache_sim && clo_branch_sim) {
-      VG_(fdprintf)(fd, "\nevents: Ir "
-                                  "Bc Bcm Bi Bim\n");
+      VG_(fprintf)(fp, "\nevents: Ir Bc Bcm Bi Bim\n");
    }
    else {
-      VG_(fdprintf)(fd, "\nevents: Ir\n");
+      VG_(fprintf)(fp, "\nevents: Ir\n");
    }
 
    // Traverse every lineCC
@@ -1449,7 +1442,7 @@ static void fprint_CC_table_and_calc_totals(void)
       // the whole strings would have to be checked.
       if ( lineCC->loc.file != currFile ) {
          currFile = lineCC->loc.file;
-         VG_(fdprintf)(fd, "fl=%s\n", currFile);
+         VG_(fprintf)(fp, "fl=%s\n", currFile);
          distinct_files++;
          just_hit_a_new_file = True;
       }
@@ -1459,13 +1452,13 @@ static void fprint_CC_table_and_calc_totals(void)
       // in the old file, hence the just_hit_a_new_file test).
       if ( just_hit_a_new_file || lineCC->loc.fn != currFn ) {
          currFn = lineCC->loc.fn;
-         VG_(fdprintf)(fd, "fn=%s\n", currFn);
+         VG_(fprintf)(fp, "fn=%s\n", currFn);
          distinct_fns++;
       }
 
       // Print the LineCC
       if (clo_cache_sim && clo_branch_sim) {
-         VG_(fdprintf)(fd, "%u %llu %llu %llu"
+         VG_(fprintf)(fp,  "%u %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu %llu\n",
@@ -1477,7 +1470,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
       else if (clo_cache_sim && !clo_branch_sim) {
-         VG_(fdprintf)(fd, "%u %llu %llu %llu"
+         VG_(fprintf)(fp,  "%u %llu %llu %llu"
                              " %llu %llu %llu"
                              " %llu %llu %llu\n",
                             lineCC->loc.line,
@@ -1486,7 +1479,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.mL);
       }
       else if (!clo_cache_sim && clo_branch_sim) {
-         VG_(fdprintf)(fd, "%u %llu"
+         VG_(fprintf)(fp,  "%u %llu"
                              " %llu %llu %llu %llu\n",
                             lineCC->loc.line,
                             lineCC->Ir.a, 
@@ -1494,7 +1487,7 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
       else {
-         VG_(fdprintf)(fd, "%u %llu\n",
+         VG_(fprintf)(fp,  "%u %llu\n",
                             lineCC->loc.line,
                             lineCC->Ir.a);
       }
@@ -1520,7 +1513,7 @@ static void fprint_CC_table_and_calc_totals(void)
    // Summary stats must come after rest of table, since we calculate them
    // during traversal.  */
    if (clo_cache_sim && clo_branch_sim) {
-      VG_(fdprintf)(fd, "summary:"
+      VG_(fprintf)(fp,  "summary:"
                         " %llu %llu %llu"
                         " %llu %llu %llu"
                         " %llu %llu %llu"
@@ -1532,7 +1525,7 @@ static void fprint_CC_table_and_calc_totals(void)
                         Bi_total.b, Bi_total.mp);
    }
    else if (clo_cache_sim && !clo_branch_sim) {
-      VG_(fdprintf)(fd, "summary:"
+      VG_(fprintf)(fp,  "summary:"
                         " %llu %llu %llu"
                         " %llu %llu %llu"
                         " %llu %llu %llu\n",
@@ -1541,7 +1534,7 @@ static void fprint_CC_table_and_calc_totals(void)
                         Dw_total.a, Dw_total.m1, Dw_total.mL);
    }
    else if (!clo_cache_sim && clo_branch_sim) {
-      VG_(fdprintf)(fd, "summary:"
+      VG_(fprintf)(fp,  "summary:"
                         " %llu"
                         " %llu %llu %llu %llu\n", 
                         Ir_total.a,
@@ -1549,12 +1542,12 @@ static void fprint_CC_table_and_calc_totals(void)
                         Bi_total.b, Bi_total.mp);
    }
    else {
-      VG_(fdprintf)(fd, "summary:"
+      VG_(fprintf)(fp, "summary:"
                         " %llu\n", 
                         Ir_total.a);
    }
 
-   VG_(close)(fd);
+   VG_(fclose)(fp);
 }
 
 static UInt ULong_width(ULong n)
@@ -1570,8 +1563,8 @@ static UInt ULong_width(ULong n)
 
 static void cg_fini(Int exitcode)
 {
-   static HChar buf1[128], buf2[128], buf3[128], buf4[123];
-   static HChar fmt[128];  // large enough
+   static HChar buf1[128], buf2[128], buf3[128], buf4[123];  // FIXME
+   static HChar fmt[128];   // OK; large enough
 
    CacheCC  D_total;
    BranchCC B_total;

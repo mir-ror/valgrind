@@ -373,8 +373,7 @@ void CLG_(print_bbcc_cost)(int s, BBCC* bbcc)
 /* dump out an address with source info if available */
 void CLG_(print_addr)(Addr addr)
 {
-    HChar *fl_buf, *dir_buf;
-    HChar *fn_buf;
+    const HChar *fn_buf, *fl_buf, *dir_buf;
     const HChar* obj_name;
     DebugInfo* di;
     UInt ln, i=0, opos=0;
@@ -443,12 +442,6 @@ void* CLG_(malloc)(const HChar* cc, UWord s, const HChar* f)
 {
     CLG_DEBUG(3, "Malloc(%lu) in %s.\n", s, f);
     return VG_(malloc)(cc,s);
-}
-
-void* CLG_(realloc)(const HChar* cc, void *p, UWord s, const HChar* f)
-{
-    CLG_DEBUG(3, "Realloc(%lu) in %s.\n", s, f);
-    return VG_(realloc)(cc,p,s);
 }
 
 #else /* CLG_ENABLE_DEBUG */

@@ -1913,6 +1913,9 @@ static UInt VTS__cmpLEQ ( VTS* a, VTS* b );
    Returns -1, 0 or 1. */
 static Word VTS__cmp_structural ( VTS* a, VTS* b );
 
+/* Debugging only.  Display the given VTS. */
+static void VTS__show ( const VTS* vts );
+
 /* Debugging only.  Return vts[index], so to speak. */
 static ULong VTS__indexAt_SLOW ( VTS* vts, Thr* idx );
 
@@ -2372,6 +2375,23 @@ Word VTS__cmp_structural ( VTS* a, VTS* b )
    if (useda > usedb) return 1;
    /*NOTREACHED*/
    tl_assert(0);
+}
+
+
+/* Debugging only.  Display the given VTS.
+*/
+static void VTS__show ( const VTS* vts )
+{
+   Word      i, n;
+   tl_assert(vts && vts->ts);
+
+   VG_(printf)("[");
+   n =  vts->usedTS;
+   for (i = 0; i < n; i++) {
+      const ScalarTS *st = &vts->ts[i];
+      VG_(printf)(i < n-1 ? "%u:%llu " : "%u:%llu", st->thrid, (ULong)st->tym);
+   }
+   VG_(printf)("]");
 }
 
 
@@ -3168,18 +3188,7 @@ static VTS* VtsID__to_VTS ( VtsID vi ) {
 
 static void VtsID__pp ( VtsID vi ) {
    VTS* vts = VtsID__to_VTS(vi);
-   ScalarTS* st;
-   Word      i, n;
-   tl_assert(vts && vts->ts);
-
-   VG_(printf)("[");
-   n =  vts->usedTS;
-   for (i = 0; i < n; i++) {
-      st = &vts->ts[i];
-      VG_(printf)(i < n-1 ? "%u:%llu " : "%u:%llu",
-                  st->thrid, (ULong)st->tym);
-   }
-   VG_(printf)("]");
+   VTS__show( vts );
 }
 
 /* compute partial ordering relation of vi1 and vi2. */

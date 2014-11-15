@@ -121,13 +121,13 @@ struct _EventMapping {
 /* Allocate space for an event mapping */
 EventMapping* CLG_(get_eventmapping)(EventSet*);
 void CLG_(append_event)(EventMapping*, const HChar*);
-/* Returns event mapping as a character string. That string is dnamically
-   allocated in a static buffer and will be overwritten with every allocation.
+/* Returns event mapping as a character string. That string is dynamically
+   allocated and it is the caller's responsibility to free it.
    The function never returns NULL. */
-const HChar *CLG_(eventmapping_as_string)(EventMapping*);
-/* Returns mapping cost as a character string. That string is dnamically
-   allocated in a static buffer and will be overwritten with every allocation.
+HChar *CLG_(eventmapping_as_string)(const EventMapping*);
+/* Returns mapping cost as a character string. That string is dynamically
+   allocated and it is the caller's responsibility to free it.
    The function never returns NULL. */
-const HChar *CLG_(mappingcost_as_string)(EventMapping*, ULong*);
+HChar *CLG_(mappingcost_as_string)(const EventMapping*, const ULong*);
 
 #endif /* CLG_EVENTS */

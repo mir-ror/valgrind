@@ -46,9 +46,12 @@
 VexControl VG_(clo_vex_control);
 Bool   VG_(clo_error_limit)    = True;
 Int    VG_(clo_error_exitcode) = 0;
+HChar *VG_(clo_error_markers)[2] = {NULL, NULL};
 
-#if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
-    || defined(VGPV_mips32_linux_android)
+#if defined(VGPV_arm_linux_android) \
+    || defined(VGPV_x86_linux_android) \
+    || defined(VGPV_mips32_linux_android) \
+    || defined(VGPV_arm64_linux_android)
 VgVgdb VG_(clo_vgdb)           = Vg_VgdbNo; // currently disabled on Android
 #else
 VgVgdb VG_(clo_vgdb)           = Vg_VgdbYes;
@@ -74,8 +77,8 @@ Bool   VG_(clo_trace_children) = False;
 const HChar* VG_(clo_trace_children_skip) = NULL;
 const HChar* VG_(clo_trace_children_skip_by_arg) = NULL;
 Bool   VG_(clo_child_silent_after_fork) = False;
-HChar* VG_(clo_log_fname_expanded) = NULL;
-HChar* VG_(clo_xml_fname_expanded) = NULL;
+const HChar* VG_(clo_log_fname_expanded) = NULL;
+const HChar* VG_(clo_xml_fname_expanded) = NULL;
 Bool   VG_(clo_time_stamp)     = False;
 Int    VG_(clo_input_fd)       = 0; /* stdin */
 Bool   VG_(clo_default_supp)   = True;
@@ -115,7 +118,6 @@ Bool   VG_(clo_sym_offsets)    = False;
 Bool   VG_(clo_read_inline_info) = False; // Or should be put it to True by default ???
 Bool   VG_(clo_read_var_info)  = False;
 XArray *VG_(clo_req_tsyms);  // array of strings
-HChar* VG_(clo_require_text_symbol) = NULL;
 Bool   VG_(clo_run_libc_freeres) = True;
 Bool   VG_(clo_track_fds)      = False;
 Bool   VG_(clo_show_below_main)= False;
@@ -129,6 +131,12 @@ Bool   VG_(clo_dsymutil)       = False;
 Bool   VG_(clo_sigill_diag)    = True;
 UInt   VG_(clo_unw_stack_scan_thresh) = 0; /* disabled by default */
 UInt   VG_(clo_unw_stack_scan_frames) = 5;
+
+#if defined(VGO_darwin)
+UInt VG_(clo_resync_filter) = 1; /* enabled, but quiet */
+#else
+UInt VG_(clo_resync_filter) = 0; /* disabled */
+#endif
 
 
 /*====================================================================*/
@@ -290,8 +298,8 @@ static HChar const* consume_field ( HChar const* c ) {
    of the executable.  'child_argv' must not include the name of the
    executable itself; iow child_argv[0] must be the first arg, if any,
    for the child. */
-Bool VG_(should_we_trace_this_child) ( HChar* child_exe_name,
-                                       HChar** child_argv )
+Bool VG_(should_we_trace_this_child) ( const HChar* child_exe_name,
+                                       const HChar** child_argv )
 {
    // child_exe_name is pulled out of the guest's space.  We
    // should be at least marginally cautious with it, lest it
