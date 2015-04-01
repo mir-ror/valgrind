@@ -1015,6 +1015,24 @@ PRE(sys_prctl)
    case VKI_PR_SET_ENDIAN:
       PRE_REG_READ2(int, "prctl", int, option, int, value);
       break;
+   case VKI_PR_SET_PTRACER:
+      PRE_REG_READ2(int, "prctl", int, option, int, ptracer_process_ID);
+      break;
+   case VKI_PR_SET_SECCOMP:
+      /* This is a bit feeble in that it uses |option| before checking
+         it, but at least both sides of the conditional check it. */
+      if (ARG2 == VKI_SECCOMP_MODE_FILTER) {
+         PRE_REG_READ3(int, "prctl", int, option, int, mode, char*, filter);
+         if (ARG3) {
+            /* Should check that ARG3 points at a valid struct sock_fprog.
+               Sounds complex; hence be lame. */
+            PRE_MEM_READ( "prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, filter)",
+                          ARG3, 1 );
+         }
+      } else {
+         PRE_REG_READ2(int, "prctl", int, option, int, mode);
+      }
+      break;
    default:
       PRE_REG_READ5(long, "prctl",
                     int, option, unsigned long, arg2, unsigned long, arg3,
@@ -3018,6 +3036,26 @@ POST(sys_getrandom)
    POST_MEM_WRITE( ARG1, ARG2 );
 }
 
+PRE(sys_memfd_create)
+{
+   PRINT("sys_memfd_create ( %#lx, %ld )" , ARG1,ARG2);
+   PRE_REG_READ2(int, "memfd_create",
+                 char *, uname, unsigned int, flags);
+   PRE_MEM_RASCIIZ( "memfd_create(uname)", ARG1 );
+}
+
+POST(sys_memfd_create)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "memfd_create", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless)(tid, RES);
+   }
+}
+
 /* ---------------------------------------------------------------------
    utime wrapper
    ------------------------------------------------------------------ */
@@ -4043,6 +4081,20 @@ PRE(sys_socketcall)
       ML_(generic_PRE_sys_recvmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1 );
       break;
 
+   case VKI_SYS_RECVMMSG:
+      /* int recvmmsg(int s, struct mmsghdr *mmsg, int vlen, int flags,
+                      struct timespec *timeout); */
+      PRE_MEM_READ_ef("socketcall.recvmmsg(args)", ARG2, 5*sizeof(Addr) );
+      ML_(linux_PRE_sys_recvmmsg)( tid, ARG2_0, ARG2_1, ARG2_2, ARG2_3,
+                                   ARG2_4 );
+      break;
+
+   case VKI_SYS_SENDMMSG:
+      /* int sendmmsg(int s, struct mmsghdr *mmsg, int vlen, int flags); */
+      PRE_MEM_READ_ef("socketcall.sendmmsg(args)", ARG2, 4*sizeof(Addr) );
+      ML_(linux_PRE_sys_sendmmsg)( tid, ARG2_0, ARG2_1, ARG2_2, ARG2_3 );
+      break;
+
    default:
       VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx\n",ARG1);
       SET_STATUS_Failure( VKI_EINVAL );
@@ -4146,6 +4198,15 @@ POST(sys_socketcall)
 
    case VKI_SYS_RECVMSG:
       ML_(generic_POST_sys_recvmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1, RES );
+      break;
+
+   case VKI_SYS_RECVMMSG:
+      ML_(linux_POST_sys_recvmmsg)( tid, RES,
+                                    ARG2_0, ARG2_1, ARG2_2, ARG2_3, ARG2_4 );
+      break;
+
+   case VKI_SYS_SENDMMSG:
+      ML_(linux_POST_sys_sendmmsg)( tid, RES, ARG2_0, ARG2_1, ARG2_2, ARG2_3 );
       break;
 
    default:
@@ -4826,64 +4887,31 @@ PRE(sys_process_vm_writev)
 
 PRE(sys_sendmmsg)
 {
-   struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-   HChar name[40];     // large enough
-   UInt i;
    *flags |= SfMayBlock;
    PRINT("sys_sendmmsg ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
    PRE_REG_READ4(long, "sendmmsg",
                  int, s, const struct mmsghdr *, mmsg, int, vlen, int, flags);
-   for (i = 0; i < ARG3; i++) {
-      VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
-      ML_(generic_PRE_sys_sendmsg)(tid, name, &mmsg[i].msg_hdr);
-      VG_(sprintf)(name, "sendmmsg(mmsg[%u].msg_len)", i);
-      PRE_MEM_WRITE( name, (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
-   }
+   ML_(linux_PRE_sys_sendmmsg)(tid, ARG1,ARG2,ARG3,ARG4);
 }
 
 POST(sys_sendmmsg)
 {
-   if (RES > 0) {
-      struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-      UInt i;
-      for (i = 0; i < RES; i++) {
-         POST_MEM_WRITE( (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
-      }
-   }
+   ML_(linux_POST_sys_sendmmsg) (tid, RES, ARG1,ARG2,ARG3,ARG4);
 }
 
 PRE(sys_recvmmsg)
 {
-   struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-   HChar name[40];     // large enough
-   UInt i;
    *flags |= SfMayBlock;
    PRINT("sys_recvmmsg ( %ld, %#lx, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
    PRE_REG_READ5(long, "recvmmsg",
                  int, s, struct mmsghdr *, mmsg, int, vlen,
                  int, flags, struct timespec *, timeout);
-   for (i = 0; i < ARG3; i++) {
-      VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
-      ML_(generic_PRE_sys_recvmsg)(tid, name, &mmsg[i].msg_hdr);
-      VG_(sprintf)(name, "recvmmsg(mmsg[%u].msg_len)", i);
-      PRE_MEM_WRITE( name, (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
-   }
-   if (ARG5)
-      PRE_MEM_READ( "recvmmsg(timeout)", ARG5, sizeof(struct vki_timespec) );
+   ML_(linux_PRE_sys_recvmmsg)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
 }
 
 POST(sys_recvmmsg)
 {
-   if (RES > 0) {
-      struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-      HChar name[32];    // large enough
-      UInt i;
-      for (i = 0; i < RES; i++) {
-         VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
-         ML_(generic_POST_sys_recvmsg)(tid, name, &mmsg[i].msg_hdr, mmsg[i].msg_len);
-         POST_MEM_WRITE( (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
-      }
-   }
+   ML_(linux_POST_sys_recvmmsg) (tid, RES, ARG1,ARG2,ARG3,ARG4,ARG5);
 }
 
 /* ---------------------------------------------------------------------
@@ -5494,6 +5522,38 @@ PRE(sys_ioctl)
    // this category).  Nb: some of these may well belong in the
    // doesn't-use-ARG3 switch above.
    switch (ARG2 /* request */) {
+
+   case VKI_ION_IOC_ALLOC: {
+      struct vki_ion_allocation_data* data
+         = (struct vki_ion_allocation_data*)ARG3;
+      PRE_FIELD_READ ("ioctl(ION_IOC_ALLOC).len",          data->len);
+      PRE_FIELD_READ ("ioctl(ION_IOC_ALLOC).align",        data->align);
+      PRE_FIELD_READ ("ioctl(ION_IOC_ALLOC).heap_id_mask", data->heap_id_mask);
+      PRE_FIELD_READ ("ioctl(ION_IOC_ALLOC).flags",        data->flags);
+      PRE_FIELD_WRITE("ioctl(ION_IOC_ALLOC).handle",       data->handle);
+      break;
+   }
+   case VKI_ION_IOC_MAP: {
+      struct vki_ion_fd_data* data = (struct vki_ion_fd_data*)ARG3;
+      PRE_FIELD_READ ("ioctl(ION_IOC_MAP).handle", data->handle);
+      PRE_FIELD_WRITE("ioctl(ION_IOC_MAP).fd",     data->fd);
+      break;
+   }
+   case VKI_ION_IOC_IMPORT: {
+      struct vki_ion_fd_data* data = (struct vki_ion_fd_data*)ARG3;
+      PRE_FIELD_READ ("ioctl(ION_IOC_IMPORT).fd",     data->fd);
+      PRE_FIELD_WRITE("ioctl(ION_IOC_IMPORT).handle", data->handle);
+      break;
+   }
+
+   case VKI_SYNC_IOC_MERGE: {
+      struct vki_sync_merge_data* data = (struct vki_sync_merge_data*)ARG3;
+      PRE_FIELD_READ ("ioctl(SYNC_IOC_MERGE).fd2",   data->fd2);
+      PRE_MEM_RASCIIZ("ioctl(SYNC_IOC_MERGE).name",  (Addr)(&data->name[0]));
+      PRE_FIELD_WRITE("ioctl(SYNC_IOC_MERGE).fence", data->fence);
+      break;
+   }
+
    case VKI_TCSETS:
    case VKI_TCSETSW:
    case VKI_TCSETSF:
@@ -6738,6 +6798,58 @@ PRE(sys_ioctl)
           }
       }
       break;
+   case VKI_I2C_SMBUS:
+       if ( ARG3 ) {
+            struct vki_i2c_smbus_ioctl_data *vkis
+               = (struct vki_i2c_smbus_ioctl_data *) ARG3;
+            PRE_MEM_READ("ioctl(VKI_I2C_SMBUS).i2c_smbus_ioctl_data.read_write",
+                         (Addr)&vkis->read_write, sizeof(vkis->read_write));
+            PRE_MEM_READ("ioctl(VKI_I2C_SMBUS).i2c_smbus_ioctl_data.size",
+                         (Addr)&vkis->size, sizeof(vkis->size));
+            PRE_MEM_READ("ioctl(VKI_I2C_SMBUS).i2c_smbus_ioctl_data.command",
+                         (Addr)&vkis->command, sizeof(vkis->command));
+            /* i2c_smbus_write_quick hides its value in read_write, so
+               this variable can hava a different meaning */
+            /* to make matters worse i2c_smbus_write_byte stores its
+               value in command */
+            if ( ! (((vkis->size == VKI_I2C_SMBUS_QUICK) 
+                     && (vkis->command == VKI_I2C_SMBUS_QUICK)) ||
+                 ((vkis->size == VKI_I2C_SMBUS_BYTE)
+                  && (vkis->read_write == VKI_I2C_SMBUS_WRITE))))  {
+                    /* the rest uses the byte array to store the data,
+                       some the first byte for size */
+                    UInt size;
+                    switch(vkis->size) {
+                        case VKI_I2C_SMBUS_BYTE_DATA:
+                            size = 1;
+                            break;
+                        case VKI_I2C_SMBUS_WORD_DATA:
+                        case VKI_I2C_SMBUS_PROC_CALL:
+                            size = 2;
+                            break;
+                        case VKI_I2C_SMBUS_BLOCK_DATA:
+                        case VKI_I2C_SMBUS_I2C_BLOCK_BROKEN:
+                        case VKI_I2C_SMBUS_BLOCK_PROC_CALL:
+                        case VKI_I2C_SMBUS_I2C_BLOCK_DATA:
+                            size = vkis->data->block[0];
+                            break;
+                        default:
+                            size = 0;
+                    }
+
+                    if ((vkis->read_write == VKI_I2C_SMBUS_READ)
+                        || (vkis->size == VKI_I2C_SMBUS_PROC_CALL)
+                        || (vkis->size == VKI_I2C_SMBUS_BLOCK_PROC_CALL))
+                        PRE_MEM_WRITE("ioctl(VKI_I2C_SMBUS)"
+                                      ".i2c_smbus_ioctl_data.data",
+                                      (Addr)&vkis->data->block[0], size);
+                    else
+                        PRE_MEM_READ("ioctl(VKI_I2C_SMBUS)."
+                                     "i2c_smbus_ioctl_data.data",
+                                     (Addr)&vkis->data->block[0], size);
+            }
+       }
+       break;
 
       /* Wireless extensions ioctls */
    case VKI_SIOCSIWCOMMIT:
@@ -8248,7 +8360,7 @@ POST(sys_ioctl)
    /* END undocumented ioctls for PowerVR SGX 540 (the GPU on Nexus S) */
 
    /* BEGIN undocumented ioctls for Qualcomm Adreno 3xx */
-   if (KernelVariantiS(KernelVariant_android_gpu_sgx5xx,
+   if (KernelVariantiS(KernelVariant_android_gpu_adreno3xx,
                        VG_(clo_kernel_variant))) {
      if (ARG2 == 0xC00C0902) {
          POST_MEM_WRITE(ARG3, 24); // 16 is not enough
@@ -8265,25 +8377,38 @@ POST(sys_ioctl)
    /* The Linux kernel "ion" memory allocator, used on Android.  Note:
       this is pretty poor given that there's no pre-handling to check
       that writable areas are addressable. */
-   case VKI_ION_IOC_ALLOC:
-      POST_MEM_WRITE(ARG3, sizeof(struct vki_ion_allocation_data));
+   case VKI_ION_IOC_ALLOC: {
+      struct vki_ion_allocation_data* data
+         = (struct vki_ion_allocation_data*)ARG3;
+      POST_FIELD_WRITE(data->handle);
       break;
-   case VKI_ION_IOC_MAP:
-      POST_MEM_WRITE(ARG3, sizeof(struct vki_ion_fd_data));
+   }
+   case VKI_ION_IOC_MAP: {
+      struct vki_ion_fd_data* data = (struct vki_ion_fd_data*)ARG3;
+      POST_FIELD_WRITE(data->fd);
       break;
+   }
    case VKI_ION_IOC_FREE: // is this necessary?
       POST_MEM_WRITE(ARG3, sizeof(struct vki_ion_handle_data));
       break;
    case VKI_ION_IOC_SHARE:
       break;
-   case VKI_ION_IOC_IMPORT: // is this necessary?
-      POST_MEM_WRITE(ARG3, sizeof(struct vki_ion_fd_data));
+   case VKI_ION_IOC_IMPORT: {
+      struct vki_ion_fd_data* data = (struct vki_ion_fd_data*)ARG3;
+      POST_FIELD_WRITE(data->handle);
       break;
+   }
    case VKI_ION_IOC_SYNC:
       break;
    case VKI_ION_IOC_CUSTOM: // is this necessary?
       POST_MEM_WRITE(ARG3, sizeof(struct vki_ion_custom_data));
       break;
+
+   case VKI_SYNC_IOC_MERGE: {
+      struct vki_sync_merge_data* data = (struct vki_sync_merge_data*)ARG3;
+      POST_FIELD_WRITE(data->fence);
+      break;
+   }
 
    case VKI_TCSETS:
    case VKI_TCSETSW:
@@ -9160,6 +9285,43 @@ POST(sys_ioctl)
           }
       }
       break;
+   case VKI_I2C_SMBUS:
+       if ( ARG3 ) {
+            struct vki_i2c_smbus_ioctl_data *vkis
+               = (struct vki_i2c_smbus_ioctl_data *) ARG3;
+            /* i2c_smbus_write_quick hides its value in read_write, so
+               this variable can hava a different meaning */
+            /* to make matters worse i2c_smbus_write_byte stores its
+               value in command */
+            if ((vkis->read_write == VKI_I2C_SMBUS_READ)
+                || (vkis->size == VKI_I2C_SMBUS_PROC_CALL)
+                || (vkis->size == VKI_I2C_SMBUS_BLOCK_PROC_CALL)) {
+                if ( ! ((vkis->size == VKI_I2C_SMBUS_QUICK) 
+                        && (vkis->command == VKI_I2C_SMBUS_QUICK))) {
+                    UInt size;
+                    switch(vkis->size) {
+                        case VKI_I2C_SMBUS_BYTE:
+                        case VKI_I2C_SMBUS_BYTE_DATA:
+                            size = 1;
+                            break;
+                        case VKI_I2C_SMBUS_WORD_DATA:
+                        case VKI_I2C_SMBUS_PROC_CALL:
+                            size = 2;
+                            break;
+                        case VKI_I2C_SMBUS_BLOCK_DATA:
+                        case VKI_I2C_SMBUS_I2C_BLOCK_BROKEN:
+                        case VKI_I2C_SMBUS_BLOCK_PROC_CALL:
+                        case VKI_I2C_SMBUS_I2C_BLOCK_DATA:
+                            size = vkis->data->block[0];
+                            break;
+                        default:
+                            size = 0;
+                    }
+                    POST_MEM_WRITE((Addr)&vkis->data->block[0], size);
+                }
+            }
+       }
+       break;
 
       /* Wireless extensions ioctls */
    case VKI_SIOCSIWCOMMIT:
@@ -10113,6 +10275,69 @@ ML_(linux_PRE_sys_setsockopt) ( ThreadId tid,
          PRE_MEM_READ( "socketcall.setsockopt(optval)",
                        arg3, /* optval */
                        arg4  /* optlen */ );
+      }
+   }
+}
+
+void
+ML_(linux_PRE_sys_recvmmsg) ( ThreadId tid,
+                              UWord arg1, UWord arg2, UWord arg3,
+                              UWord arg4, UWord arg5 )
+{
+   struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)arg2;
+   HChar name[40];     // large enough
+   UInt i;
+   for (i = 0; i < arg3; i++) {
+      VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
+      ML_(generic_PRE_sys_recvmsg)(tid, name, &mmsg[i].msg_hdr);
+      VG_(sprintf)(name, "recvmmsg(mmsg[%u].msg_len)", i);
+      PRE_MEM_WRITE( name, (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
+   }
+   if (arg5)
+      PRE_MEM_READ( "recvmmsg(timeout)", arg5, sizeof(struct vki_timespec) );
+}
+
+void
+ML_(linux_POST_sys_recvmmsg) (ThreadId tid, UWord res,
+                              UWord arg1, UWord arg2, UWord arg3,
+                              UWord arg4, UWord arg5 )
+{
+   if (res > 0) {
+      struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)arg2;
+      HChar name[32];    // large enough
+      UInt i;
+      for (i = 0; i < res; i++) {
+         VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
+         ML_(generic_POST_sys_recvmsg)(tid, name, &mmsg[i].msg_hdr, mmsg[i].msg_len);
+         POST_MEM_WRITE( (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
+      }
+   }
+}
+
+void
+ML_(linux_PRE_sys_sendmmsg) ( ThreadId tid,
+                              UWord arg1, UWord arg2, UWord arg3, UWord arg4 )
+{
+   struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)arg2;
+   HChar name[40];     // large enough
+   UInt i;
+   for (i = 0; i < arg3; i++) {
+      VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
+      ML_(generic_PRE_sys_sendmsg)(tid, name, &mmsg[i].msg_hdr);
+      VG_(sprintf)(name, "sendmmsg(mmsg[%u].msg_len)", i);
+      PRE_MEM_WRITE( name, (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
+   }
+}
+
+void
+ML_(linux_POST_sys_sendmmsg) (ThreadId tid, UWord res,
+                              UWord arg1, UWord arg2, UWord arg3, UWord arg4 )
+{
+   if (res > 0) {
+      struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)arg2;
+      UInt i;
+      for (i = 0; i < res; i++) {
+         POST_MEM_WRITE( (Addr)&mmsg[i].msg_len, sizeof(mmsg[i].msg_len) );
       }
    }
 }

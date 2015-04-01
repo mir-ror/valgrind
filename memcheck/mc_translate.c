@@ -3396,6 +3396,8 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_CmpLE64Fx2:
       case Iop_CmpEQ64Fx2:
       case Iop_CmpUN64Fx2:
+      case Iop_RecipStep64Fx2:
+      case Iop_RSqrtStep64Fx2:
          return binary64Fx2(mce, vatom1, vatom2);      
 
       case Iop_Sub64F0x2:
@@ -3732,6 +3734,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_TanF64:
       case Iop_2xm1F64:
       case Iop_SqrtF64:
+      case Iop_RecpExpF64:
          /* I32(rm) x I64/F64 -> I64/F64 */
          return mkLazy2(mce, Ity_I64, vatom1, vatom2);
 
@@ -3783,6 +3786,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       case Iop_RoundF32toInt:
       case Iop_SqrtF32:
+      case Iop_RecpExpF32:
          /* I32(rm) x I32/F32 -> I32/F32 */
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
 
@@ -4244,6 +4248,8 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Sqrt64Fx2:
       case Iop_Abs64Fx2:
       case Iop_Neg64Fx2:
+      case Iop_RSqrtEst64Fx2:
+      case Iop_RecipEst64Fx2:
          return unary64Fx2(mce, vatom);
 
       case Iop_Sqrt64F0x2:
@@ -6073,6 +6079,7 @@ static void do_shadow_LoadG ( MCEnv* mce, IRLoadG* lg )
    IROp   vwiden   = Iop_INVALID;
    IRType loadedTy = Ity_INVALID;
    switch (lg->cvt) {
+      case ILGop_Ident64: loadedTy = Ity_I64; vwiden = Iop_INVALID; break;
       case ILGop_Ident32: loadedTy = Ity_I32; vwiden = Iop_INVALID; break;
       case ILGop_16Uto32: loadedTy = Ity_I16; vwiden = Iop_16Uto32; break;
       case ILGop_16Sto32: loadedTy = Ity_I16; vwiden = Iop_16Sto32; break;
@@ -7314,6 +7321,7 @@ static void do_origins_LoadG ( MCEnv* mce, IRLoadG* lg )
 {
    IRType loadedTy = Ity_INVALID;
    switch (lg->cvt) {
+      case ILGop_Ident64: loadedTy = Ity_I64; break;
       case ILGop_Ident32: loadedTy = Ity_I32; break;
       case ILGop_16Uto32: loadedTy = Ity_I16; break;
       case ILGop_16Sto32: loadedTy = Ity_I16; break;

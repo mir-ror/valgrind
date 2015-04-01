@@ -810,6 +810,7 @@ static SyscallTableEntry syscall_table[] = {
    GENX_(__NR_getuid,            sys_getuid),             //  24
 
 // _____(__NR_stime,             sys_stime),              //  25
+// When ptrace is supported, memcheck/tests/linux/getregset should be enabled
 // _____(__NR_ptrace,            sys_ptrace),             //  26
    GENX_(__NR_alarm,             sys_alarm),              //  27
 // _____(__NR_oldfstat,          sys_oldfstat),           //  28
@@ -1152,12 +1153,18 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_pwritev,           sys_pwritev),          // 321
    LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),// 322
 
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),         // 343
+   LINXY(__NR_accept4,           sys_accept4),          // 344
+
    LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 347
+
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 349
 
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 351
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 352
 
-   LINXY(__NR_getrandom,         sys_getrandom)         // 359
+   LINXY(__NR_getrandom,         sys_getrandom),        // 359
+   LINXY(__NR_memfd_create,      sys_memfd_create)      // 360
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

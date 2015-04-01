@@ -295,6 +295,10 @@ extern Word VG_(clo_max_stackframe);
    be? */
 extern Word VG_(clo_main_stacksize);
 
+/* The maximum number of threads we support. */
+#define MAX_THREADS_DEFAULT 500
+extern UInt VG_(clo_max_threads);
+
 /* If the same IP is found twice in a backtrace in a sequence of max
    VG_(clo_merge_recursive_frames) frames, then the recursive call
    is merged in the backtrace.
@@ -306,9 +310,17 @@ extern Int VG_(clo_merge_recursive_frames);
 /* Max number of sectors that will be used by the translation code cache. */
 extern UInt VG_(clo_num_transtab_sectors);
 
+/* Average size of a transtab code entry. 0 means to use the tool
+   provided default. */
+extern UInt VG_(clo_avg_transtab_entry_size);
+
 /* Only client requested fixed mapping can be done below 
    VG_(clo_aspacem_minAddr). */
 extern Addr VG_(clo_aspacem_minAddr);
+
+/* How large the Valgrind thread stacks should be. 
+   Will be rounded up to a page.. */
+extern Word VG_(clo_valgrind_stacksize);
 
 /* Delay startup to allow GDB to be attached?  Default: NO */
 extern Bool VG_(clo_wait_for_gdb);

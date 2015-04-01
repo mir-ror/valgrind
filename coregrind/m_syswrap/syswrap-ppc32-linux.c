@@ -1251,14 +1251,18 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_shutdown,          sys_shutdown),         // 338
    LINX_(__NR_setsockopt,        sys_setsockopt),       // 339
 
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),         // 343
    LINXY(__NR_accept4,           sys_accept4),          // 344
 
    LINX_(__NR_clock_adjtime,     sys_clock_adjtime),    // 347
 
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 349
+
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 351
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 352
 
-   LINXY(__NR_getrandom,         sys_getrandom)         // 359
+   LINXY(__NR_getrandom,         sys_getrandom),        // 359
+   LINXY(__NR_memfd_create,      sys_memfd_create)      // 360
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

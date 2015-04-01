@@ -200,8 +200,7 @@ static inline UWord sr_Err ( SysRes sr ) {
 }
 static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
    return sr1._val == sr2._val 
-          && ((sr1._isError && sr2._isError) 
-              || (!sr1._isError && !sr2._isError));
+       && sr1._isError == sr2._isError;
 }
 
 #elif defined(VGO_darwin)
@@ -367,6 +366,9 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
          T out;           \
       } var = { .in = x }; var.out;  \
    })
+
+// Poor man's static assert
+#define STATIC_ASSERT(x)  extern int VG_(VG_(VG_(unused)))[(x) ? 1 : -1]
 
 #endif /* __PUB_TOOL_BASICS_H */
 

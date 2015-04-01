@@ -194,7 +194,13 @@ static void usage_NORETURN ( Bool debug_help )
 "           program counters in max <number> frames) [0]\n"
 "    --num-transtab-sectors=<number> size of translated code cache [%d]\n"
 "           more sectors may increase performance, but use more memory.\n"
+"    --avg-transtab-entry-size=<number> avg size in bytes of a translated\n"
+"           basic block [0, meaning use tool provided default]\n"
 "    --aspace-minaddr=0xPP     avoid mapping memory below 0xPP [guessed]\n"
+"    --valgrind-stacksize=<number> size of valgrind (host) thread's stack\n"
+"                               (in bytes) ["
+                                VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB) 
+                                                "]\n"
 "    --show-emwarns=no|yes     show warnings about emulation limits? [no]\n"
 "    --require-text-symbol=:sonamepattern:symbolpattern    abort run if the\n"
 "                              stated shared object doesn't have the stated\n"
@@ -212,6 +218,8 @@ static void usage_NORETURN ( Bool debug_help )
 "                  recovered by stack scanning [5]\n"
 "    --resync-filter=no|yes|verbose [yes on MacOS, no on other OSes]\n"
 "              attempt to avoid expensive address-space-resync operations\n"
+"    --max-threads=<number>    maximum number of threads that valgrind can\n"
+"                              handle [%d]\n"
 "\n";
 
    const HChar usage2[] = 
@@ -246,26 +254,34 @@ static void usage_NORETURN ( Bool debug_help )
 "  Vex options for all Valgrind tools:\n"
 "    --vex-iropt-verbosity=<0..9>           [0]\n"
 "    --vex-iropt-level=<0..2>               [2]\n"
-"    --vex-iropt-register-updates=sp-at-mem-access\n"
-"                                |unwindregs-at-mem-access\n"
-"                                |allregs-at-mem-access\n"
-"                                |allregs-at-each-insn  [unwindregs-at-mem-access]\n"
 "    --vex-iropt-unroll-thresh=<0..400>     [120]\n"
 "    --vex-guest-max-insns=<1..100>         [50]\n"
 "    --vex-guest-chase-thresh=<0..99>       [10]\n"
 "    --vex-guest-chase-cond=no|yes          [no]\n"
-"    --trace-flags and --profile-flags values (omit the middle space):\n"
-"       1000 0000   show conversion into IR\n"
-"       0100 0000   show after initial opt\n"
-"       0010 0000   show after instrumentation\n"
-"       0001 0000   show after second opt\n"
-"       0000 1000   show after tree building\n"
-"       0000 0100   show selecting insns\n"
-"       0000 0010   show after reg-alloc\n"
-"       0000 0001   show final assembly\n"
-"       0000 0000   show summary profile only\n"
-"      (Nb: you need --trace-notbelow and/or --trace-notabove\n"
-"           with --trace-flags for full details)\n"
+"    Precise exception control.  Possible values for 'mode' are as follows\n"
+"      and specify the minimum set of registers guaranteed to be correct\n"
+"      immediately prior to memory access instructions:\n"
+"         sp-at-mem-access          stack pointer only\n"
+"         unwindregs-at-mem-access  registers needed for stack unwinding\n"
+"         allregs-at-mem-access     all registers\n"
+"         allregs-at-each-insn      all registers are always correct\n"
+"      Default value for all 3 following flags is [unwindregs-at-mem-access].\n"
+"      --vex-iropt-register-updates=mode   setting to use by default\n"
+"      --px-default=mode      synonym for --vex-iropt-register-updates\n"
+"      --px-file-backed=mode  optional setting for file-backed (non-JIT) code\n"
+"    Tracing and profile control:\n"
+"      --trace-flags and --profile-flags values (omit the middle space):\n"
+"         1000 0000   show conversion into IR\n"
+"         0100 0000   show after initial opt\n"
+"         0010 0000   show after instrumentation\n"
+"         0001 0000   show after second opt\n"
+"         0000 1000   show after tree building\n"
+"         0000 0100   show selecting insns\n"
+"         0000 0010   show after reg-alloc\n"
+"         0000 0001   show final assembly\n"
+"         0000 0000   show summary profile only\n"
+"        (Nb: you need --trace-notbelow and/or --trace-notabove\n"
+"             with --trace-flags for full details)\n"
 "\n"
 "  debugging options for Valgrind tools that report errors\n"
 "    --dump-error=<number>     show translation for basic block associated\n"
@@ -309,7 +325,8 @@ static void usage_NORETURN ( Bool debug_help )
                default_redzone_size       /* char* */,
                VG_(clo_vgdb_poll)         /* int */,
                VG_(vgdb_prefix_default)() /* char* */,
-               N_SECTORS_DEFAULT          /* int */
+               N_SECTORS_DEFAULT          /* int */,
+               MAX_THREADS_DEFAULT        /* int */
                ); 
    if (VG_(details).name) {
       VG_(printf)("  user options for %s:\n", VG_(details).name);
@@ -345,6 +362,7 @@ static void usage_NORETURN ( Bool debug_help )
    - set VG_(clo_max_stackframe) (--max-stackframe=)
    - set VG_(clo_main_stacksize) (--main-stacksize=)
    - set VG_(clo_sim_hints) (--sim-hints=)
+   - set VG_(clo_max_threads) (--max-threads)
 
    That's all it does.  The main command line processing is done below
    by main_process_cmd_line_options.  Note that
@@ -386,6 +404,9 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
       else if VG_INT_CLO(str, "--max-stackframe", VG_(clo_max_stackframe)) {}
       else if VG_INT_CLO(str, "--main-stacksize", VG_(clo_main_stacksize)) {}
 
+      // Set up VG_(clo_max_threads); needed for VG_(tl_pre_clo_init)
+      else if VG_INT_CLO(str, "--max-threads", VG_(clo_max_threads)) {}
+
       // Set up VG_(clo_sim_hints). This is needed a.o. for an inner
       // running in an outer, to have "no-inner-prefix" enabled
       // as early as possible.
@@ -395,6 +416,9 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
                             "no-nptl-pthread-stackcache",
                             VG_(clo_sim_hints)) {}
    }
+
+   /* For convenience */
+   VG_N_THREADS = VG_(clo_max_threads);
 }
 
 /* The main processing for command line options.  See comments above
@@ -469,12 +493,21 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
    VG_(clo_req_tsyms) = VG_(newXA)(VG_(malloc), "main.mpclo.6",
                                    VG_(free), sizeof(HChar *));
 
+   /* Constants for parsing PX control flags. */
+   const HChar* pxStrings[5]
+      = { "sp-at-mem-access",      "unwindregs-at-mem-access",
+          "allregs-at-mem-access", "allregs-at-each-insn", NULL };
+   const VexRegisterUpdates pxVals[5]
+      = { VexRegUpdSpAtMemAccess,      VexRegUpdUnwindregsAtMemAccess,
+          VexRegUpdAllregsAtMemAccess, VexRegUpdAllregsAtEachInsn, 0/*inval*/ };
+
    /* BEGIN command-line processing loop */
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_valgrind) ); i++) {
 
       HChar* arg   = * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i );
       HChar* colon = arg;
+      UInt   ix    = 0;
 
       // Look for a colon in the option name.
       while (*colon && *colon != ':' && *colon != '=')
@@ -522,11 +555,18 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       else if VG_STREQ(     arg, "-d")                   {}
       else if VG_STREQN(17, arg, "--max-stackframe=")    {}
       else if VG_STREQN(17, arg, "--main-stacksize=")    {}
+      else if VG_STREQN(14, arg, "--max-threads=")       {}
       else if VG_STREQN(12, arg, "--sim-hints=")         {}
       else if VG_STREQN(15, arg, "--profile-heap=")      {}
       else if VG_STREQN(20, arg, "--core-redzone-size=") {}
       else if VG_STREQN(15, arg, "--redzone-size=")      {}
       else if VG_STREQN(17, arg, "--aspace-minaddr=")    {}
+
+      else if VG_BINT_CLO(arg, "--valgrind-stacksize",
+                          VG_(clo_valgrind_stacksize), 
+                          2*VKI_PAGE_SIZE, 10*VG_DEFAULT_STACK_ACTIVE_SZB)
+                            {VG_(clo_valgrind_stacksize) 
+                                  = VG_PGROUNDUP(VG_(clo_valgrind_stacksize));}
 
       /* Obsolete options. Report an error and exit */
       else if VG_STREQN(34, arg, "--vex-iropt-precise-memory-exns=no") {
@@ -564,7 +604,8 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       else if VG_XACT_CLO(arg, "--vgdb=full",      VG_(clo_vgdb), Vg_VgdbFull) {
          /* automatically updates register values at each insn
             with --vgdb=full */
-         VG_(clo_vex_control).iropt_register_updates 
+         VG_(clo_vex_control).iropt_register_updates_default
+            = VG_(clo_px_file_backed)
             = VexRegUpdAllregsAtEachInsn;
       }
       else if VG_INT_CLO (arg, "--vgdb-poll",      VG_(clo_vgdb_poll)) {}
@@ -655,19 +696,21 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       else if VG_BINT_CLO(arg, "--num-transtab-sectors",
                                VG_(clo_num_transtab_sectors),
                                MIN_N_SECTORS, MAX_N_SECTORS) {}
+      else if VG_BINT_CLO(arg, "--avg-transtab-entry-size",
+                               VG_(clo_avg_transtab_entry_size),
+                               50, 5000) {}
       else if VG_BINT_CLO(arg, "--merge-recursive-frames",
                                VG_(clo_merge_recursive_frames), 0,
                                VG_DEEPEST_BACKTRACE) {}
 
-      else if VG_XACT_CLO(arg, "--smc-check=none",  VG_(clo_smc_check),
-                                                    Vg_SmcNone);
-      else if VG_XACT_CLO(arg, "--smc-check=stack", VG_(clo_smc_check),
-                                                    Vg_SmcStack);
-      else if VG_XACT_CLO(arg, "--smc-check=all",   VG_(clo_smc_check),
-                                                    Vg_SmcAll);
+      else if VG_XACT_CLO(arg, "--smc-check=none", 
+                          VG_(clo_smc_check), Vg_SmcNone) {}
+      else if VG_XACT_CLO(arg, "--smc-check=stack",
+                          VG_(clo_smc_check), Vg_SmcStack) {}
+      else if VG_XACT_CLO(arg, "--smc-check=all",
+                          VG_(clo_smc_check), Vg_SmcAll) {}
       else if VG_XACT_CLO(arg, "--smc-check=all-non-file",
-                                                    VG_(clo_smc_check),
-                                                    Vg_SmcAllNonFile);
+                          VG_(clo_smc_check), Vg_SmcAllNonFile) {}
 
       else if VG_USETX_CLO (arg, "--kernel-variant",
                             "bproc,"
@@ -687,22 +730,31 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                        VG_(clo_vex_control).iropt_verbosity, 0, 10) {}
       else if VG_BINT_CLO(arg, "--vex-iropt-level",
                        VG_(clo_vex_control).iropt_level, 0, 2) {}
-      else if VG_XACT_CLO(arg, 
-                       "--vex-iropt-register-updates=sp-at-mem-access",
-                       VG_(clo_vex_control).iropt_register_updates,
-                       VexRegUpdSpAtMemAccess);
-      else if VG_XACT_CLO(arg, 
-                       "--vex-iropt-register-updates=unwindregs-at-mem-access",
-                       VG_(clo_vex_control).iropt_register_updates,
-                       VexRegUpdUnwindregsAtMemAccess);
-      else if VG_XACT_CLO(arg, 
-                       "--vex-iropt-register-updates=allregs-at-mem-access",
-                       VG_(clo_vex_control).iropt_register_updates,
-                       VexRegUpdAllregsAtMemAccess);
-      else if VG_XACT_CLO(arg, 
-                       "--vex-iropt-register-updates=allregs-at-each-insn",
-                       VG_(clo_vex_control).iropt_register_updates,
-                       VexRegUpdAllregsAtEachInsn);
+
+      else if VG_STRINDEX_CLO(arg, "--vex-iropt-register-updates",
+                                   pxStrings, ix) {
+         vg_assert(ix < 4);
+         vg_assert(pxVals[ix] >= VexRegUpdSpAtMemAccess);
+         vg_assert(pxVals[ix] <= VexRegUpdAllregsAtEachInsn);
+         VG_(clo_vex_control).iropt_register_updates_default = pxVals[ix];
+      }
+      else if VG_STRINDEX_CLO(arg, "--px-default", pxStrings, ix) {
+         // NB: --px-default is an alias for the hard-to-remember
+         // --vex-iropt-register-updates, hence the same logic.
+         vg_assert(ix < 4);
+         vg_assert(pxVals[ix] >= VexRegUpdSpAtMemAccess);
+         vg_assert(pxVals[ix] <= VexRegUpdAllregsAtEachInsn);
+         VG_(clo_vex_control).iropt_register_updates_default = pxVals[ix];
+      }
+      else if VG_STRINDEX_CLO(arg, "--px-file-backed", pxStrings, ix) {
+         // Whereas --px-file-backed isn't
+         // the same flag as --vex-iropt-register-updates.
+         vg_assert(ix < 4);
+         vg_assert(pxVals[ix] >= VexRegUpdSpAtMemAccess);
+         vg_assert(pxVals[ix] <= VexRegUpdAllregsAtEachInsn);
+         VG_(clo_px_file_backed) = pxVals[ix];
+      }
+
       else if VG_BINT_CLO(arg, "--vex-iropt-unroll-thresh",
                        VG_(clo_vex_control).iropt_unroll_thresh, 0, 400) {}
       else if VG_BINT_CLO(arg, "--vex-guest-max-insns",
@@ -745,7 +797,7 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                               VG_(clo_xml_user_comment)) {}
 
       else if VG_BOOL_CLO(arg, "--default-suppressions",
-                          VG_(clo_default_supp)) { }
+                          VG_(clo_default_supp)) {}
 
       else if VG_STR_CLO(arg, "--suppressions", tmp_str) {
          VG_(addToXA)(VG_(clo_suppressions), &tmp_str);
@@ -1392,7 +1444,9 @@ static void print_preamble ( Bool logging_to_fd,
       VG_(umsg)("\n");
 
    if (VG_(clo_verbosity) > 1) {
+# if !defined(VGO_darwin)
       SysRes fd;
+# endif
       VexArch vex_arch;
       VexArchInfo vex_archinfo;
       if (!logging_to_fd)
@@ -1404,6 +1458,7 @@ static void print_preamble ( Bool logging_to_fd,
                      * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i ));
       }
 
+# if !defined(VGO_darwin)
       VG_(message)(Vg_DebugMsg, "Contents of /proc/version:\n");
       fd = VG_(open) ( "/proc/version", VKI_O_RDONLY, 0 );
       if (sr_isError(fd)) {
@@ -1425,6 +1480,18 @@ static void print_preamble ( Bool logging_to_fd,
          VG_(message)(Vg_DebugMsg, "\n");
          VG_(close)(fdno);
       }
+# else
+      VG_(message)(Vg_DebugMsg, "Output from sysctl({CTL_KERN,KERN_VERSION}):\n");
+      /* Note: preferable to use sysctlbyname("kern.version", kernelVersion, &len, NULL, 0)
+         however that syscall is OS X 10.10+ only. */
+      Int mib[] = {CTL_KERN, KERN_VERSION};
+      SizeT len;
+      VG_(sysctl)(mib, sizeof(mib)/sizeof(Int), NULL, &len, NULL, 0);
+      HChar *kernelVersion = VG_(malloc)("main.pp.1", len);
+      VG_(sysctl)(mib, sizeof(mib)/sizeof(Int), kernelVersion, &len, NULL, 0);
+      VG_(message)(Vg_DebugMsg, "  %s\n", kernelVersion);
+      VG_(free)( kernelVersion );
+# endif
 
       VG_(machine_get_VexArchInfo)( &vex_arch, &vex_archinfo );
       VG_(message)(
@@ -1514,7 +1581,9 @@ static void setup_file_descriptors(void)
    marked global even though it isn't, because assembly code below
    needs to reference the name. */
 
-/*static*/ VgStack VG_(interim_stack);
+/*static*/ struct {
+   HChar bytes [VG_STACK_GUARD_SZB + VG_DEFAULT_STACK_ACTIVE_SZB + VG_STACK_GUARD_SZB];
+} VG_(interim_stack);
 
 /* These are the structures used to hold info for creating the initial
    client image.
@@ -1612,21 +1681,13 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
       if VG_BINT_CLO(argv[i], "--redzone-size", VG_(clo_redzone_size),
                      0, MAX_CLO_REDZONE_SZB) {}
       if VG_STR_CLO(argv[i], "--aspace-minaddr", tmp_str) {
-#        if VG_WORDSIZE == 4
-         const Addr max = (Addr) 0x40000000; // 1Gb
-#        else
-         const Addr max = (Addr) 0x200000000; // 8Gb
-#        endif
          Bool ok = VG_(parse_Addr) (&tmp_str, &VG_(clo_aspacem_minAddr));
          if (!ok)
             VG_(fmsg_bad_option)(argv[i], "Invalid address\n");
-
-         if (!VG_IS_PAGE_ALIGNED(VG_(clo_aspacem_minAddr))
-             || VG_(clo_aspacem_minAddr) < (Addr) 0x1000
-             || VG_(clo_aspacem_minAddr) > max) // 1Gb
-            VG_(fmsg_bad_option)(argv[i], 
-                                 "Must be a page aligned address between "
-                                 "0x1000 and 0x%lx\n", max);
+         const HChar *errmsg;
+         if (!VG_(am_is_valid_for_aspacem_minAddr)(VG_(clo_aspacem_minAddr),
+                                                   &errmsg))
+            VG_(fmsg_bad_option)(argv[i], "%s\n", errmsg);
       }
    }
 
@@ -1854,7 +1915,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 #  endif
    // END HACK
 
-   // Set default vex control params
+   // Set default vex control params.
    LibVEX_default_VexControl(& VG_(clo_vex_control));
 
    //--------------------------------------------------------------
@@ -2149,7 +2210,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
      Int   n_seg_starts;
      Addr_n_ULong anu;
 
-     seg_starts = VG_(get_segment_starts)( &n_seg_starts );
+     seg_starts = VG_(get_segment_starts)( SkFileC | SkFileV, &n_seg_starts );
      vg_assert(seg_starts && n_seg_starts >= 0);
 
      /* show them all to the debug info reader.  allow_SkFileV has to
@@ -2171,7 +2232,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 #  elif defined(VGO_darwin)
    { Addr* seg_starts;
      Int   n_seg_starts;
-     seg_starts = VG_(get_segment_starts)( &n_seg_starts );
+     seg_starts = VG_(get_segment_starts)( SkFileC, &n_seg_starts );
      vg_assert(seg_starts && n_seg_starts >= 0);
 
      /* show them all to the debug info reader.  
@@ -2255,38 +2316,20 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
      vg_assert(VG_(running_tid) == VG_INVALID_THREADID);
      VG_(running_tid) = tid_main;
 
-     seg_starts = VG_(get_segment_starts)( &n_seg_starts );
+     seg_starts = VG_(get_segment_starts)( SkFileC | SkAnonC | SkShmC,
+                                           &n_seg_starts );
      vg_assert(seg_starts && n_seg_starts >= 0);
 
-     /* show interesting ones to the tool */
+     /* Show client segments to the tool */
      for (i = 0; i < n_seg_starts; i++) {
         Word j, n;
         NSegment const* seg 
            = VG_(am_find_nsegment)( seg_starts[i] );
         vg_assert(seg);
-        if (seg->kind == SkFileC || seg->kind == SkAnonC) {
-          /* This next assertion is tricky.  If it is placed
-             immediately before this 'if', it very occasionally fails.
-             Why?  Because previous iterations of the loop may have
-             caused tools (via the new_mem_startup calls) to do
-             dynamic memory allocation, and that may affect the mapped
-             segments; in particular it may cause segment merging to
-             happen.  Hence we cannot assume that seg_starts[i], which
-             reflects the state of the world before we started this
-             loop, is the same as seg->start, as the latter reflects
-             the state of the world (viz, mappings) at this particular
-             iteration of the loop.
-
-             Why does moving it inside the 'if' make it safe?  Because
-             any dynamic memory allocation done by the tools will
-             affect only the state of Valgrind-owned segments, not of
-             Client-owned segments.  And the 'if' guards against that
-             -- we only get in here for Client-owned segments.
-
-             In other words: the loop may change the state of
-             Valgrind-owned segments as it proceeds.  But it should
-             not cause the Client-owned segments to change. */
-           vg_assert(seg->start == seg_starts[i]);
+        vg_assert(seg->kind == SkFileC || seg->kind == SkAnonC ||
+                  seg->kind == SkShmC);
+        vg_assert(seg->start == seg_starts[i]);
+        {
            VG_(debugLog)(2, "main", 
                             "tell tool about %010lx-%010lx %c%c%c\n",
                              seg->start, seg->end,
@@ -2487,7 +2530,6 @@ void shutdown_actions_NORETURN( ThreadId tid,
    VG_(am_show_nsegments)(1,"Memory layout at client shutdown");
 
    vg_assert(VG_(is_running_thread)(tid));
-
    vg_assert(tids_schedretcode == VgSrc_ExitThread
 	     || tids_schedretcode == VgSrc_ExitProcess
              || tids_schedretcode == VgSrc_FatalSig );
@@ -2844,7 +2886,7 @@ asm("\n"
     /* set up the new stack in %eax */
     "\tmovl  $vgPlain_interim_stack, %eax\n"
     "\taddl  $"VG_STRINGIFY(VG_STACK_GUARD_SZB)", %eax\n"
-    "\taddl  $"VG_STRINGIFY(VG_STACK_ACTIVE_SZB)", %eax\n"
+    "\taddl  $"VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)", %eax\n"
     "\tsubl  $16, %eax\n"
     "\tandl  $~15, %eax\n"
     /* install it, and collect the original one */
@@ -2864,7 +2906,7 @@ asm("\n"
     /* set up the new stack in %rdi */
     "\tmovq  $vgPlain_interim_stack, %rdi\n"
     "\taddq  $"VG_STRINGIFY(VG_STACK_GUARD_SZB)", %rdi\n"
-    "\taddq  $"VG_STRINGIFY(VG_STACK_ACTIVE_SZB)", %rdi\n"
+    "\taddq  $"VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)", %rdi\n"
     "\tandq  $~15, %rdi\n"
     /* install it, and collect the original one */
     "\txchgq %rdi, %rsp\n"
@@ -2884,13 +2926,13 @@ asm("\n"
     "\tla  16,vgPlain_interim_stack@l(16)\n"
     "\tlis    17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" >> 16)\n"
     "\tori 17,17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" & 0xFFFF)\n"
-    "\tlis    18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" >> 16)\n"
-    "\tori 18,18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
+    "\tlis    18,("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)" >> 16)\n"
+    "\tori 18,18,("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
     "\tadd 16,17,16\n"
     "\tadd 16,18,16\n"
     "\trlwinm 16,16,0,0,27\n"
     /* now r16 = &vgPlain_interim_stack + VG_STACK_GUARD_SZB +
-       VG_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
+       VG_DEFAULT_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
        boundary.  And r1 is the original SP.  Set the SP to r16 and
        call _start_in_C_linux, passing it the initial SP. */
     "\tmr 3,1\n"
@@ -2923,13 +2965,13 @@ asm("\n"
     "\tlis    17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" >> 16)\n"
     "\tori 17,17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" & 0xFFFF)\n"
     "\txor 18,18,18\n"
-    "\tlis    18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" >> 16)\n"
-    "\tori 18,18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
+    "\tlis    18,("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)" >> 16)\n"
+    "\tori 18,18,("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
     "\tadd 16,17,16\n"
     "\tadd 16,18,16\n"
     "\trldicr 16,16,0,59\n"
     /* now r16 = &vgPlain_interim_stack + VG_STACK_GUARD_SZB +
-       VG_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
+       VG_DEFAULT_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
        boundary.  And r1 is the original SP.  Set the SP to r16 and
        call _start_in_C_linux, passing it the initial SP. */
     "\tmr 3,1\n"
@@ -2969,13 +3011,13 @@ asm("\n"
     "\tlis    17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" >> 16)\n"
     "\tori 17,17,("VG_STRINGIFY(VG_STACK_GUARD_SZB)" & 0xFFFF)\n"
     "\txor 18,18,18\n"
-    "\tlis    18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" >> 16)\n"
-    "\tori 18,18,("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
+    "\tlis    18,("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)" >> 16)\n"
+    "\tori 18,18,("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)" & 0xFFFF)\n"
     "\tadd 16,17,16\n"
     "\tadd 16,18,16\n"
     "\trldicr 16,16,0,59\n"
     /* now r16 = &vgPlain_interim_stack + VG_STACK_GUARD_SZB +
-       VG_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
+       VG_DEFAULT_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
        boundary.  And r1 is the original SP.  Set the SP to r16 and
        call _start_in_C_linux, passing it the initial SP. */
     "\tmr 3,1\n"
@@ -3028,7 +3070,7 @@ asm("\n\t"
     /* trigger execution of an invalid opcode -> halt machine */
     "j      .+2\n\t"
     "1:   .quad "VG_STRINGIFY(VG_STACK_GUARD_SZB)"\n\t"
-    "2:   .quad "VG_STRINGIFY(VG_STACK_ACTIVE_SZB)"\n\t"
+    "2:   .quad "VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)"\n\t"
     ".previous\n"
 );
 #elif defined(VGP_arm_linux)
@@ -3051,7 +3093,7 @@ asm("\n"
     "\tb _start_in_C_linux\n"
     "\t.word vgPlain_interim_stack\n"
     "\t.word "VG_STRINGIFY(VG_STACK_GUARD_SZB)"\n"
-    "\t.word "VG_STRINGIFY(VG_STACK_ACTIVE_SZB)"\n"
+    "\t.word "VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)"\n"
 );
 #elif defined(VGP_arm64_linux)
 asm("\n"
@@ -3067,9 +3109,9 @@ asm("\n"
     "\tmovk x1, (("VG_STRINGIFY(VG_STACK_GUARD_SZB)") >> 16) & 0xFFFF,"
                 " lsl 16\n"
     "\tadd  x0, x0, x1\n"
-    // The next 2 assume that VG_STACK_ACTIVE_SZB fits in 32 bits
-    "\tmov  x1, (("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)") >> 0) & 0xFFFF\n"
-    "\tmovk x1, (("VG_STRINGIFY(VG_STACK_ACTIVE_SZB)") >> 16) & 0xFFFF,"
+    // The next 2 assume that VG_DEFAULT_STACK_ACTIVE_SZB fits in 32 bits
+    "\tmov  x1, (("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)") >> 0) & 0xFFFF\n"
+    "\tmovk x1, (("VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)") >> 16) & 0xFFFF,"
                 " lsl 16\n"
     "\tadd  x0, x0, x1\n"
     "\tand  x0, x0, -16\n"
@@ -3101,14 +3143,14 @@ asm("\n"
 
 
     "\tli    $10, "VG_STRINGIFY(VG_STACK_GUARD_SZB)"\n"
-    "\tli    $11, "VG_STRINGIFY(VG_STACK_ACTIVE_SZB)"\n"
+    "\tli    $11, "VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)"\n"
     
     "\taddu     $9, $9, $10\n"
     "\taddu     $9, $9, $11\n"
     "\tli       $12, 0xFFFFFFF0\n"
     "\tand      $9, $9, $12\n"
     /* now t1/$9 = &vgPlain_interim_stack + VG_STACK_GUARD_SZB +
-       VG_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
+       VG_DEFAULT_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
        boundary.  And $29 is the original SP.  Set the SP to t1 and
        call _start_in_C, passing it the initial SP. */
        
@@ -3137,14 +3179,14 @@ asm(
     "\tdaddiu $9, %lo(vgPlain_interim_stack)\n"
 
     "\tli     $10, "VG_STRINGIFY(VG_STACK_GUARD_SZB)"\n"
-    "\tli     $11, "VG_STRINGIFY(VG_STACK_ACTIVE_SZB)"\n"
+    "\tli     $11, "VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)"\n"
 
     "\tdaddu  $9, $9, $10\n"
     "\tdaddu  $9, $9, $11\n"
     "\tli     $12, 0xFFFFFF00\n"
     "\tand    $9, $9, $12\n"
     /* now t1/$9 = &vgPlain_interim_stack + VG_STACK_GUARD_SZB +
-       VG_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
+       VG_DEFAULT_STACK_ACTIVE_SZB rounded down to the nearest 16-byte
        boundary.  And $29 is the original SP.  Set the SP to t1 and
        call _start_in_C, passing it the initial SP. */
 
@@ -3266,7 +3308,7 @@ asm("\n"
     /* set up the new stack in %eax */
     "\tmovl  $_vgPlain_interim_stack, %eax\n"
     "\taddl  $"VG_STRINGIFY(VG_STACK_GUARD_SZB)", %eax\n"
-    "\taddl  $"VG_STRINGIFY(VG_STACK_ACTIVE_SZB)", %eax\n"
+    "\taddl  $"VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)", %eax\n"
     "\tsubl  $16, %eax\n"
     "\tandl  $~15, %eax\n"
     /* install it, and collect the original one */
@@ -3287,7 +3329,7 @@ asm("\n"
     /* set up the new stack in %rdi */
     "\tmovabsq $_vgPlain_interim_stack, %rdi\n"
     "\taddq    $"VG_STRINGIFY(VG_STACK_GUARD_SZB)", %rdi\n"
-    "\taddq    $"VG_STRINGIFY(VG_STACK_ACTIVE_SZB)", %rdi\n"
+    "\taddq    $"VG_STRINGIFY(VG_DEFAULT_STACK_ACTIVE_SZB)", %rdi\n"
     "\tandq    $~15, %rdi\n"
     /* install it, and collect the original one */
     "\txchgq %rdi, %rsp\n"

@@ -2325,7 +2325,7 @@ static Bool summarise_context(/*OUT*/Addr* base,
                                              sizeof(CfiExpr) );
       si_m->ra_how = CFIR_EXPR;
       si_m->ra_off = ML_(CfiExpr_CfiReg)( debuginfo->cfsi_exprs,
-                                          Creg_S390_R14);
+                                          Creg_S390_LR);
    }
 
    /* knock out some obviously stupid cases */
@@ -2467,11 +2467,11 @@ static Int copy_convert_CfiExpr_tree ( XArray*        dstxa,
            return ML_(CfiExpr_CfiReg)( dstxa, Creg_ARM_R15 ); /* correct? */
 #        elif defined(VGA_s390x)
          if (dwreg == SP_REG)
-            return ML_(CfiExpr_CfiReg)( dstxa, Creg_IA_SP );
+            return ML_(CfiExpr_CfiReg)( dstxa, Creg_S390_SP );
          if (dwreg == FP_REG)
-            return ML_(CfiExpr_CfiReg)( dstxa, Creg_IA_BP );
+            return ML_(CfiExpr_CfiReg)( dstxa, Creg_S390_FP );
          if (dwreg == srcuc->ra_reg)
-            return ML_(CfiExpr_CfiReg)( dstxa, Creg_IA_IP ); /* correct? */
+            return ML_(CfiExpr_CfiReg)( dstxa, Creg_S390_IA );
 #        elif defined(VGA_mips32) || defined(VGA_mips64)
          if (dwreg == SP_REG)
             return ML_(CfiExpr_CfiReg)( dstxa, Creg_IA_SP );
@@ -2534,12 +2534,13 @@ static ULong step_le_u_encoded_literal ( DiCursor* data, UInt size )
 
 static Long step_le_s_encoded_literal ( DiCursor* data, UInt size )
 {
-   Long s64 = step_le_u_encoded_literal( data, size );
+   ULong u64 = step_le_u_encoded_literal( data, size );
+   Long s64;
    switch (size) {
-      case 8:  break;
-      case 4:  s64 <<= 32; s64 >>= 32; break;
-      case 2:  s64 <<= 48; s64 >>= 48; break;
-      case 1:  s64 <<= 56; s64 >>= 56; break;
+      case 8:  s64 = u64; break;
+      case 4:  s64 = u64 << 32; s64 >>= 32; break;
+      case 2:  s64 = u64 << 48; s64 >>= 48; break;
+      case 1:  s64 = u64 << 56; s64 >>= 56; break;
       default: vg_assert(0); /*NOTREACHED*/ return 0;
    }
    return s64;

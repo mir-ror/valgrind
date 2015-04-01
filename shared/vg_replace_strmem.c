@@ -204,7 +204,7 @@ static inline void my_exit ( int x )
  //STRRCHR(VG_Z_DYLD,          strrchr)
  //STRRCHR(VG_Z_DYLD,          rindex)
  STRRCHR(VG_Z_LIBC_SONAME, strrchr)
-# if DARWIN_VERS == DARWIN_10_9
+# if DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
   STRRCHR(libsystemZucZddylib, strrchr)
 # endif
 
@@ -244,6 +244,10 @@ static inline void my_exit ( int x )
  STRCHR(VG_Z_LIBC_SONAME, strchr)
 # if DARWIN_VERS == DARWIN_10_9
   STRCHR(libsystemZuplatformZddylib, _platform_strchr)
+# endif
+# if DARWIN_VERS == DARWIN_10_10
+  /* _platform_strchr$VARIANT$Generic */
+  STRCHR(libsystemZuplatformZddylib, _platform_strchr$VARIANT$Generic)
 # endif
 #endif
 
@@ -959,18 +963,33 @@ static inline void my_exit ( int x )
    int VG_REPLACE_FUNCTION_EZU(20190,soname,fnname)       \
           ( const void *s1V, const void *s2V, SizeT n )  \
    { \
-      int res; \
-      UChar a0; \
-      UChar b0; \
-      const UChar* s1 = s1V; \
-      const UChar* s2 = s2V; \
+      const SizeT WS = sizeof(UWord); /* 8 or 4 */ \
+      const SizeT WM = WS - 1;        /* 7 or 3 */ \
+      Addr s1A = (Addr)s1V; \
+      Addr s2A = (Addr)s2V; \
+      \
+      if (((s1A | s2A) & WM) == 0) { \
+         /* Both areas are word aligned.  Skip over the */ \
+         /* equal prefix as fast as possible. */ \
+         while (n >= WS) { \
+            UWord w1 = *(UWord*)s1A; \
+            UWord w2 = *(UWord*)s2A; \
+            if (w1 != w2) break; \
+            s1A += WS; \
+            s2A += WS; \
+            n -= WS; \
+         } \
+      } \
+      \
+      const UChar* s1 = (const UChar*) s1A; \
+      const UChar* s2 = (const UChar*) s2A; \
       \
       while (n != 0) { \
-         a0 = s1[0]; \
-         b0 = s2[0]; \
+         UChar a0 = s1[0]; \
+         UChar b0 = s2[0]; \
          s1 += 1; \
          s2 += 1; \
-         res = ((int)a0) - ((int)b0); \
+         int res = ((int)a0) - ((int)b0); \
          if (res != 0) \
             return res; \
          n -= 1; \

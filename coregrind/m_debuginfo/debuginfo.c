@@ -816,7 +816,7 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
 ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
 {
    NSegment const * seg;
-   HChar*     filename;
+   const HChar* filename;
    Bool       is_rx_map, is_rw_map, is_ro_map;
    DebugInfo* di;
    Int        actual_fd, oflags;
@@ -881,7 +881,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
       Bool quiet = VG_(strstr)(filename, "/var/run/nscd/") != NULL;
       if (!quiet && VG_(clo_verbosity) > 1) {
          VG_(memset)(&fake_di, 0, sizeof(fake_di));
-         fake_di.fsm.filename = filename;
+         fake_di.fsm.filename = ML_(dinfo_strdup)("di.debuginfo.nmm", filename);
          ML_(symerr)(&fake_di, True, "failed to stat64/stat this file");
       }
       return 0;
@@ -986,7 +986,8 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
          if (sr_Err(fd) != VKI_EACCES) {
             DebugInfo fake_di;
             VG_(memset)(&fake_di, 0, sizeof(fake_di));
-            fake_di.fsm.filename = filename;
+            fake_di.fsm.filename = ML_(dinfo_strdup)("di.debuginfo.nmm",
+                                                     filename);
             ML_(symerr)(&fake_di, True,
                         "can't open file to inspect ELF header");
          }
@@ -1005,7 +1006,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
    if (sr_isError(preadres)) {
       DebugInfo fake_di;
       VG_(memset)(&fake_di, 0, sizeof(fake_di));
-      fake_di.fsm.filename = filename;
+      fake_di.fsm.filename = ML_(dinfo_strdup)("di.debuginfo.nmm", filename);
       ML_(symerr)(&fake_di, True, "can't read file to inspect ELF header");
       return 0;
    }
@@ -1410,10 +1411,8 @@ void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
 
      if (VG_(clo_verbosity) > 0) {
         VG_(message)(Vg_UserMsg, "LOAD_PDB_DEBUGINFO: done:    "
-                                 "%lu syms, %lu src locs, "
-                                 "%lu src locs, %lu fpo recs\n",
-                     di->symtab_used, di->loctab_used, 
-                     di->inltab_used, di->fpo_size);
+                                 "%lu syms, %lu src locs, %lu fpo recs\n",
+                     di->symtab_used, di->loctab_used, di->fpo_size);
      }
    }
 
@@ -1725,7 +1724,7 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
 
 /* The whole point of this whole big deal: map a code address to a
    plausible symbol name.  Returns False if no idea; otherwise True.
-   Caller supplies buf and nbuf.  If do_cxx_demangling is False, don't do
+   Caller supplies buf.  If do_cxx_demangling is False, don't do
    C++ demangling, regardless of VG_(clo_demangle) -- probably because the
    call has come from VG_(get_fnname_raw)().  findText
    indicates whether we're looking for a text symbol or a data symbol
@@ -1851,13 +1850,19 @@ Bool VG_(get_fnname_w_offset) ( Addr a, const HChar** buf )
    of the return string at function get_sym_name */
 Bool VG_(get_fnname_if_entry) ( Addr a, const HChar** buf )
 {
-   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
+   const HChar *tmp;
+   Bool res;
+
+   res =  get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
                          /*below-main-renaming*/True,
-                         a, buf,
+                         a, &tmp,
                          /*match_anywhere_in_fun*/False, 
                          /*show offset?*/False,
                          /*text syms only*/True,
                          /*offsetP*/NULL );
+   if (res)
+      *buf = tmp;
+   return res;
 }
 
 /* This is only available to core... don't C++-demangle, don't Z-demangle,
@@ -2470,10 +2475,10 @@ UWord evalCfiExpr ( const XArray* exprs, Int ix,
             case Creg_ARM_R12: return eec->uregs->r12;
             case Creg_ARM_R7:  return eec->uregs->r7;
 #           elif defined(VGA_s390x)
-            case Creg_IA_IP: return eec->uregs->ia;
-            case Creg_IA_SP: return eec->uregs->sp;
-            case Creg_IA_BP: return eec->uregs->fp;
-            case Creg_S390_R14: return eec->uregs->lr;
+            case Creg_S390_IA: return eec->uregs->ia;
+            case Creg_S390_SP: return eec->uregs->sp;
+            case Creg_S390_FP: return eec->uregs->fp;
+            case Creg_S390_LR: return eec->uregs->lr;
 #           elif defined(VGA_mips32) || defined(VGA_mips64)
             case Creg_IA_IP: return eec->uregs->pc;
             case Creg_IA_SP: return eec->uregs->sp;

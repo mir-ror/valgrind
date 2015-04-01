@@ -325,20 +325,14 @@ case "${host_os}" in
         kernel=`uname -r`
 
         case "${kernel}" in
-             2.6.*|3.*) 
-        	    AC_MSG_RESULT([2.6.x/3.x family (${kernel})])
-        	    AC_DEFINE([KERNEL_2_6], 1, [Define to 1 if you're using Linux 2.6.x or Linux 3.x])
-        	    ;;
-
-             2.4.*) 
-        	    AC_MSG_RESULT([2.4 family (${kernel})])
-        	    AC_DEFINE([KERNEL_2_4], 1, [Define to 1 if you're using Linux 2.4.x])
-        	    ;;
-
-             *) 
+             0.*|1.*|2.0.*|2.1.*|2.2.*|2.3.*|2.4.*|2.5.*) 
         	    AC_MSG_RESULT([unsupported (${kernel})])
-        	    AC_MSG_ERROR([Valgrind works on kernels 2.4, 2.6])
+        	    AC_MSG_ERROR([Valgrind needs a Linux kernel >= 2.6])
         	    ;;
+
+             *)
+        	    AC_MSG_RESULT([2.6 or later (${kernel})])
+                    ;;
         esac
 
         ;;
@@ -833,6 +827,16 @@ else
     VALT_LOAD_ADDRESS_SEC=$valt_load_address_sec_norml
 fi
 
+#----------------------------------------------------------------------------
+# Undefined behaviour sanitiser
+#----------------------------------------------------------------------------
+# Check whether we should build with the undefined beahviour sanitiser.
+
+AC_CACHE_CHECK([for using the undefined behaviour sanitiser], vg_cv_ubsan,
+   [AC_ARG_ENABLE(ubsan, 
+      [  --enable-ubsan          enables the undefined behaviour sanitiser],
+      [vg_cv_ubsan=$enableval],
+      [vg_cv_ubsan=no])])
 
 #----------------------------------------------------------------------------
 # Define MIPS_PAGE_SHIFT (--with-pagesize)
@@ -1084,6 +1088,7 @@ AM_CONDITIONAL([HAVE_GNU_STPNCPY], [test x$ac_have_gnu_stpncpy = xyes])
 
 AC_MSG_CHECKING([for PTRACE_GETREGS])
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <stdlib.h>
 #include <stddef.h>
 #include <sys/ptrace.h>
 #include <sys/user.h>
@@ -1782,6 +1787,28 @@ CFLAGS=$safe_CFLAGS
 
 AC_SUBST(FLAG_FNO_STACK_PROTECTOR)
 
+
+# Does this compiler support -fsanitize=undefined?
+# Only checked for if --enable-ubsan was given.
+if test "x${vg_cv_ubsan}" = "xyes"; then
+AC_MSG_CHECKING([if gcc accepts -fsanitize=undefined])
+safe_CFLAGS=$CFLAGS
+CFLAGS="-fsanitize=undefined"
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+FLAG_FSANITIZE="-fsanitize=undefined"
+LIB_UBSAN="-static-libubsan"
+AC_MSG_RESULT([yes])
+], [
+FLAG_FSANITIZE=""
+LIB_UBSAN=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+AC_SUBST(FLAG_FSANITIZE)
+AC_SUBST(LIB_UBSAN)
+fi
 # does this compiler support --param inline-unit-growth=... ?
 
 AC_MSG_CHECKING([if gcc accepts --param inline-unit-growth])

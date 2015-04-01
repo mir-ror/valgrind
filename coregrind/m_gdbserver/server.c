@@ -33,6 +33,7 @@
 #include "pub_core_transtab.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_addrinfo.h"
+#include "pub_core_aspacemgr.h"
 
 unsigned long cont_thread;
 unsigned long general_thread;
@@ -307,7 +308,8 @@ int handle_gdb_valgrind_command (char *mon, OutputSink *sink_wanted_at_return)
          (*sink_wanted_at_return).fd = initial_valgrind_sink.fd;
          command_output_to_log = False;
          VG_(gdb_printf)
-            ("valgrind output will go to log, interactive output will go to gdb\n");
+            ("valgrind output will go to log, "
+             "interactive output will go to gdb\n");
          break;
       case 6: /* hostvisibility */
          wcmd = strtok_r (NULL, " ", &ssaveptr);
@@ -329,7 +331,12 @@ int handle_gdb_valgrind_command (char *mon, OutputSink *sink_wanted_at_return)
          if (hostvisibility) {
             const DebugInfo *tooldi 
                = VG_(find_DebugInfo) ((Addr)handle_gdb_valgrind_command);
-            const NSegment *toolseg 
+            /* Normally, we should always find the tooldi. In case we
+               do not, suggest a 'likely somewhat working' address: */
+            const Addr tool_text_start
+               = tooldi ?
+               VG_(DebugInfo_get_text_avma) (tooldi) : 0x38000000;
+            const NSegment *toolseg
                = tooldi ?
                  VG_(am_find_nsegment) (VG_(DebugInfo_get_text_avma) (tooldi))
                  : NULL;
@@ -340,7 +347,7 @@ int handle_gdb_valgrind_command (char *mon, OutputSink *sink_wanted_at_return)
                 "add-symbol-file %s %p\n", 
                 toolseg ? VG_(am_get_filename)(toolseg)
                 : "<toolfile> <address> e.g.",
-                toolseg ? (void*)toolseg->start : (void*)0x38000000);
+                (void*)tool_text_start);
          } else
             VG_(gdb_printf)
                ("Disabled access to Valgrind memory/status by GDB\n");
@@ -427,12 +434,13 @@ int handle_gdb_valgrind_command (char *mon, OutputSink *sink_wanted_at_return)
             GDB equivalent command of 'v.info location' is 'info symbol'. */
          Addr address;
          SizeT dummy_sz = 0x1234;
-         if (VG_(strtok_get_address_and_size) (&address, &dummy_sz, &ssaveptr)) {
+         if (VG_(strtok_get_address_and_size) (&address, 
+                                               &dummy_sz, &ssaveptr)) {
             // If tool provides location information, use that.
             if (VG_(needs).info_location) {
                VG_TDICT_CALL(tool_info_location, address);
             } 
-            // If tool does not provide location information, use the common one.
+            // If tool does not provide location info, use the common one.
             // Also use the common to compare with tool when debug log is set.
             if (!VG_(needs).info_location || VG_(debugLog_getLevel)() > 0 ) {
                AddrInfo ai;
@@ -543,6 +551,9 @@ int handle_gdb_monitor_command (char *mon)
    // one we have when entering. It can however be changed by the standard
    // valgrind command handling.
    OutputSink sink_wanted_at_return = VG_(log_output_sink);
+   // When using gdbserver, we temporarily disable xml output.
+   Bool save_clo_xml = VG_(clo_xml);
+   VG_(clo_xml) = False;
 
    if (!initial_valgrind_sink_saved) {
       /* first time we enter here, we save the valgrind default log sink */
@@ -579,6 +590,8 @@ int handle_gdb_monitor_command (char *mon)
 
    /* restore or set the desired output */
    VG_(log_output_sink).fd = sink_wanted_at_return.fd;
+   VG_(clo_xml) = save_clo_xml;
+
    if (ret | tool_ret)
       return 1;
    else
@@ -610,7 +623,7 @@ void handle_set (char *arg_own_buf, int *new_packet_len_p)
          if (to == NULL) to = end;
          decode_address (&sig, from, to - from);
          pass_signals[(int)sig] = 1;
-         dlog(1, "pass_signal gdb_nr %d %s\n",
+         dlog(3, "pass_signal gdb_nr %d %s\n",
               (int)sig, target_signal_to_name(sig));
          from = to;
          if (*from == ';') from++;

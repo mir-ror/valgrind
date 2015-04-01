@@ -1683,6 +1683,19 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.max-threads" xreflabel="--max-threads">
+    <term>
+      <option><![CDATA[--max-threads=<number> [default: 500] ]]></option>
+    </term>
+    <listitem>
+      <para>By default, Valgrind can handle to up to 500 threads.
+      Occasionally, that number is too small. Use this option to
+      provide a different limit. E.g.
+      <computeroutput>--max-threads=3000</computeroutput>.
+      </para>
+    </listitem>
+  </varlistentry>
+
 </variablelist>
 <!-- end of xi:include in the manpage -->
 
@@ -2195,7 +2208,7 @@ need to use them.</para>
     </term>
     <listitem>
       <para>Valgrind translates and instruments your program's machine
-      code in small fragments. The translations are stored in a
+      code in small fragments (basic blocks). The translations are stored in a
       translation cache that is divided into a number of sections
       (sectors). If the cache is full, the sector containing the
       oldest translations is emptied and reused. If these old
@@ -2206,10 +2219,33 @@ need to use them.</para>
       performance by reducing the number of re-translations needed.
       Sectors are allocated on demand.  Once allocated, a sector can
       never be freed, and occupies considerable space, depending on the tool
+      and the value of <option>--avg-transtab-entry-size</option>
       (about 40 MB per sector for Memcheck).  Use the
       option <option>--stats=yes</option> to obtain precise
       information about the memory used by a sector and the allocation
       and recycling of sectors.</para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.avg-transtab-entry-size" xreflabel="--avg-transtab-entry-size">
+    <term>
+      <option><![CDATA[--avg-transtab-entry-size=<number> [default: 0,
+      meaning use tool provided default] ]]></option>
+    </term>
+    <listitem>
+      <para>Average size of translated basic block. This average size
+      is used to dimension the size of a sector.
+      Each tool provides a default value to be used.
+      If this default value is too small, the translation sectors
+      will become full too quickly. If this default value is too big,
+      a significant part of the translation sector memory will be unused.
+      Note that the average size of a basic block translation depends
+      on the tool, and might depend on tool options. For example,
+      the memcheck option <option>--track-origins=yes</option>
+      increases the size of the basic block translations.
+      Use <option>--avg-transtab-entry-size</option> to tune the size of the
+      sectors, either to gain memory or to avoid too many retranslations.
+      </para>
    </listitem>
   </varlistentry>
 
@@ -2236,8 +2272,33 @@ need to use them.</para>
       provided <computeroutput>address</computeroutput> must be page
       aligned and must be equal or bigger to 0x1000 (4KB). To find the
       default value on your platform, do something such as
-      <computeroutput>valgrind -d -d date 2&gt;&amp;1 | grep -i minaddr</computeroutput>. Values lower than 0x10000 (64KB) are known to create problems
+      <computeroutput>valgrind -d -d date 2&gt;&amp;1 | grep -i minaddr</computeroutput>.
+      Values lower than 0x10000 (64KB) are known to create problems
       on some distributions.
+      </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.valgrind-stacksize" xreflabel="----valgrind-stacksize">
+    <term>
+      <option><![CDATA[--valgrind-stacksize=<number> [default: 1MB] ]]></option>
+    </term>
+    <listitem>
+      <para>For each thread, Valgrind needs its own 'private' stack.
+      The default size for these stacks is largely dimensioned, and so
+      should be sufficient in most cases.  In case the size is too small,
+      Valgrind will segfault. Before segfaulting, a warning might be produced
+      by Valgrind when approaching the limit.
+      </para>
+      <para>
+      Use the option <option>--valgrind-stacksize</option> if such an (unlikely)
+      warning is produced, or Valgrind dies due to a segmentation violation.
+      Such segmentation violations have been seen when demangling huge C++
+      symbols.
+      </para>
+      <para>If your application uses many threads and needs a lot of memory, you can
+      gain some memory by reducing the size of these Valgrind stacks using
+      the option <option>--valgrind-stacksize</option>.
       </para>
    </listitem>
   </varlistentry>

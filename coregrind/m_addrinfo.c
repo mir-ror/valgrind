@@ -37,7 +37,6 @@
 #include "pub_core_xarray.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_execontext.h"
-#include "pub_core_aspacemgr.h"
 #include "pub_core_addrinfo.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_machine.h"
@@ -206,10 +205,9 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
 
    /* -- last ditch attempt at classification -- */
    sect = VG_(DebugInfo_sect_kind)( &name, a);
-   ai->Addr.SectKind.objname = VG_(strdup)("mc.da.dsname", name);
-
    if (sect != Vg_SectUnknown) {
       ai->tag = Addr_SectKind;
+      ai->Addr.SectKind.objname = VG_(strdup)("mc.da.dsname", name);
       ai->Addr.SectKind.kind = sect;
       return;
    }
@@ -293,11 +291,8 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
          ai->Addr.SegmentKind.segkind = seg->kind;
          ai->Addr.SegmentKind.filename = NULL;
          if (seg->kind == SkFileC)
-            ai->Addr.SegmentKind.filename = VG_(am_get_filename) (seg);
-         if (ai->Addr.SegmentKind.filename != NULL)
-            ai->Addr.SegmentKind.filename 
-               = VG_(strdup)("mc.da.skfname",
-                             ai->Addr.SegmentKind.filename);
+            ai->Addr.SegmentKind.filename
+               = VG_(strdup)("mc.da.skfname", VG_(am_get_filename)(seg));
          ai->Addr.SegmentKind.hasR = seg->hasR;
          ai->Addr.SegmentKind.hasW = seg->hasW;
          ai->Addr.SegmentKind.hasX = seg->hasX;

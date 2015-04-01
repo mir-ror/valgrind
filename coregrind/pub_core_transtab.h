@@ -56,7 +56,8 @@ extern __attribute__((aligned(16)))
 #define TRANSTAB_BOGUS_GUEST_ADDR ((Addr)1)
 
 
-/* Initialises the TC, using VG_(clo_num_transtab_sectors).
+/* Initialises the TC, using VG_(clo_num_transtab_sectors)
+   and VG_(clo_avg_transtab_entry_size).
    VG_(clo_num_transtab_sectors) must be >= MIN_N_SECTORS
    and <= MAX_N_SECTORS. */
 extern void VG_(init_tt_tc)       ( void );
@@ -90,15 +91,22 @@ void VG_(add_to_transtab)( const VexGuestExtents* vge,
                            Int              offs_profInc,
                            UInt             n_guest_instrs );
 
+typedef UShort SECno; // SECno type identifies a sector
+typedef UShort TTEno; // TTEno type identifies a TT entry in a sector.
+
+// 2 constants that indicates Invalid entries.
+#define INV_SNO ((SECno)0xFFFF)
+#define INV_TTE ((TTEno)0xFFFF)
+
 extern
 void VG_(tt_tc_do_chaining) ( void* from__patch_addr,
-                              UInt  to_sNo,
-                              UInt  to_tteNo,
+                              SECno to_sNo,
+                              TTEno to_tteNo,
                               Bool  to_fastEP );
 
 extern Bool VG_(search_transtab) ( /*OUT*/Addr*  res_hcode,
-                                   /*OUT*/UInt*  res_sNo,
-                                   /*OUT*/UInt*  res_tteNo,
+                                   /*OUT*/SECno* res_sNo,
+                                   /*OUT*/TTEno* res_tteNo,
                                    Addr          guest_addr, 
                                    Bool          upd_cache );
 

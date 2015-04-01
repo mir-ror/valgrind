@@ -214,6 +214,7 @@ EXTRA_DIST = \
 	realloc2.stderr.exp realloc2.vgtest \
 	realloc3.stderr.exp realloc3.vgtest \
 	recursive-merge.stderr.exp recursive-merge.vgtest \
+	resvn_stack.stderr.exp resvn_stack.vgtest \
 	sbfragment.stdout.exp sbfragment.stderr.exp sbfragment.vgtest \
 	sem.stderr.exp sem.vgtest \
 	sendmsg.stderr.exp sendmsg.vgtest \
@@ -275,7 +276,7 @@ EXTRA_DIST = \
 	wrap6.vgtest wrap6.stdout.exp wrap6.stderr.exp \
 	wrap7.vgtest wrap7.stdout.exp wrap7.stderr.exp \
 	wrap8.vgtest wrap8.stdout.exp wrap8.stderr.exp \
-	wrap8.stdout.exp2 wrap8.stderr.exp2 \
+	wrap8.stdout.exp-ppc64 wrap8.stderr.exp-ppc64 \
 	writev1.stderr.exp writev1.vgtest \
 	xml1.stderr.exp xml1.stdout.exp xml1.vgtest xml1.stderr.exp-s390x-mvc \
 	threadname.vgtest threadname.stderr.exp \
@@ -340,6 +341,7 @@ check_PROGRAMS = \
 	post-syscall \
 	realloc1 realloc2 realloc3 \
 	recursive-merge \
+	resvn_stack \
 	sbfragment \
 	sendmsg \
 	sh-mem sh-mem-random \
