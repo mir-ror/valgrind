@@ -602,6 +602,7 @@ void MC_(create_ncode_templates) ( void );
 
 extern NCodeTemplate* MC_(tmpl__LOADV64le_on_64);
 extern NCodeTemplate* MC_(tmpl__LOADV32le_on_64);
+extern NCodeTemplate* MC_(tmpl__LOADV8_on_64);
 
 
 /* Helper functions defined in mc_main.c */
