@@ -4626,42 +4626,62 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
 
    /* ------ BEGIN inline NCode ? ------ */
    if (guardIsAlwaysTrue(guard) && mce->hWordTy == Ity_I64 && end == Iend_LE) {
-      if (ty == Ity_I64) {
-         /* Unconditional LOAD64le on 64 bit host.  Generate inline code. */
-         IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
-         NCodeTemplate* tmpl        = MC_(tmpl__LOADV64le_on_64);
-         IRAtom**       args        = mkIRExprVec_1( addrAct );
-         IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
-         stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
-         return mkexpr(datavbits64);
+      switch (ty) {
+         case Ity_I64: {
+            /* Unconditional LOAD64le on 64 bit host.  Generate inline code. */
+            IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
+            NCodeTemplate* tmpl        = MC_(tmpl__LOADV64le_on_64);
+            IRAtom**       args        = mkIRExprVec_1( addrAct );
+            IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
+            stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
+            return mkexpr(datavbits64);
+         }
+         case Ity_I32: {
+            /* Unconditional LOAD32le on 64 bit host.  Generate inline code. */
+            IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
+            NCodeTemplate* tmpl        = MC_(tmpl__LOADV32le_on_64);
+            IRAtom**       args        = mkIRExprVec_1( addrAct );
+            IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
+            /* The NCode block produces a 64 bit value, but we need to
+               truncate it to 32 bits. */
+            stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
+            IRAtom* datavbits32
+              = assignNew('V', mce, Ity_I32,
+                                    unop(Iop_64to32, mkexpr(datavbits64)));
+            return datavbits32;
+         }
+         case Ity_I16: {
+            /* Unconditional LOAD16le on 64 bit host.  Generate inline code. */
+            IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
+            NCodeTemplate* tmpl        = MC_(tmpl__LOADV16le_on_64);
+            IRAtom**       args        = mkIRExprVec_1( addrAct );
+            IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
+            /* The NCode block produces a 64 bit value, but we need to
+               truncate it to 16 bits. */
+            stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
+            IRAtom* datavbits16
+              = assignNew('V', mce, Ity_I16,
+                                    unop(Iop_64to16, mkexpr(datavbits64)));
+            return datavbits16;
+         }
+         case Ity_I8: {
+            /* Unconditional LOAD8 on 64 bit host.  Generate inline code. */
+            IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
+            NCodeTemplate* tmpl        = MC_(tmpl__LOADV8_on_64);
+            IRAtom**       args        = mkIRExprVec_1( addrAct );
+            IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
+            /* The NCode block produces a 64 bit value, but we need to
+               truncate it to 8 bits. */
+            stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
+            IRAtom* datavbits8
+              = assignNew('V', mce, Ity_I8,
+                                    unop(Iop_64to8, mkexpr(datavbits64)));
+            return datavbits8;
+         }
+         default:
+            /* else fall through */
+            break;
       }
-      if (ty == Ity_I32) {
-         /* Unconditional LOAD32le on 64 bit host.  Generate inline code. */
-         IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
-         NCodeTemplate* tmpl        = MC_(tmpl__LOADV32le_on_64);
-         IRAtom**       args        = mkIRExprVec_1( addrAct );
-         IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
-         /* The NCode block produces a 64 bit value, but we need to
-            truncate it to 32 bits. */
-         stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
-         IRAtom* datavbits32
-           = assignNew('V', mce, Ity_I32, unop(Iop_64to32, mkexpr(datavbits64)));
-         return datavbits32;
-      }
-      if (ty == Ity_I8) {
-         /* Unconditional LOAD8 on 64 bit host.  Generate inline code. */
-         IRTemp         datavbits64 = newTemp(mce, Ity_I64, VSh);
-         NCodeTemplate* tmpl        = MC_(tmpl__LOADV8_on_64);
-         IRAtom**       args        = mkIRExprVec_1( addrAct );
-         IRTemp*        ress        = mkIRTempVec_1( datavbits64 );
-         /* The NCode block produces a 64 bit value, but we need to
-            truncate it to 8 bits. */
-         stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
-         IRAtom* datavbits8
-           = assignNew('V', mce, Ity_I8, unop(Iop_64to8, mkexpr(datavbits64)));
-         return datavbits8;
-      }
-      /* else fall through */
    }
    /* ------ END inline NCode ? ------ */
 

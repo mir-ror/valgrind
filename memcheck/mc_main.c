@@ -4276,7 +4276,8 @@ static void mc_pre_reg_read ( CorePart part, ThreadId tid, const HChar* s,
 
 VG_REGPARM(1) static ULong mc_LOADV64le_on_64_slow ( Addr a );
 VG_REGPARM(1) static ULong mc_LOADV32le_on_64_slow ( Addr a );
-VG_REGPARM(1) static ULong mc_LOADV8_on_64_slow ( Addr a );
+VG_REGPARM(1) static ULong mc_LOADV16le_on_64_slow ( Addr a );
+VG_REGPARM(1) static ULong mc_LOADV8_on_64_slow    ( Addr a );
 
 static void* ncode_alloc ( UInt n ) {
    return VG_(malloc)("mc.ncode_alloc (NCode, permanent)", n);
@@ -4295,6 +4296,7 @@ static NReg* mkNRegVec1 ( NAlloc na, NReg r0 ) {
 
 NCodeTemplate* MC_(tmpl__LOADV64le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV32le_on_64) = NULL;
+NCodeTemplate* MC_(tmpl__LOADV16le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV8_on_64)    = NULL;
 
 static NCodeTemplate* mk_tmpl__LOADV64le_on_64 ( NAlloc na )
@@ -4423,6 +4425,98 @@ static NCodeTemplate* mk_tmpl__LOADV32le_on_64 ( NAlloc na )
    return tmpl;
 }
 
+static NCodeTemplate* mk_tmpl__LOADV16le_on_64 ( NAlloc na )
+{
+   NInstr** hot  = na((11+1) * sizeof(NInstr*));
+   NInstr** cold = na((14+1) * sizeof(NInstr*));
+
+   NReg rINVALID = mkNRegINVALID();
+
+   NReg r0 = mkNReg(Nrr_Result,   0);
+   NReg a0 = mkNReg(Nrr_Argument, 0);
+   NReg s0 = mkNReg(Nrr_Scratch,  0);
+
+   /*
+    h0   tst.w  a0, #0xFFFFFFF000000001       high-or-misaligned?
+    h1   bnz    cold.12                       yes, goto slow path
+    h2   shr.w  s0, a0, #16                   s0 = pri-map-ix
+    h3   ld.64  s0, [&pri_map[0] + s0 << #3]  s0 = sec-map
+    h4   and.w  r0, a0, #0xFFFF               r0 = sec-map-offB
+    h5   shr.w  r0, r0, #2                    r0 = sec-map-ix
+    h6   ld.8   r0, [s0 + r0 << #0]           r0 = sec-map-VABITS8
+    h7   cmp.w  r0, #0xAA                     r0 == VABITS8_DEFINED?
+    h8   bnz    cold.0                        no, goto cold.0
+    h9   imm.w  r0, #0xFFFFFFFFFFFF0000       VBITS8_DEFINED | top48safe
+    h10  nop                                  continue
+
+    c0   cmp.w  r0, #0x55                     VABITS8_UNDEFINED
+    c1   bnz    cold.4
+
+    c2   imm.w  r0, #0xFFFFFFFFFFFFFFFF       VBITS16_UNDEFINED | top48safe
+    c3   b      hot.10
+
+    // r0 holds sec-map-VABITS8.  a0 holds the address and is 2-aligned.
+    // Extract the relevant 4 bits of r0 and inspect.
+    c4   and.w  s0, a0, #2        // addr & 2
+    c5   add.w  s0, s0, s0        // 2 * (addr & 2)
+    c6   shr.w  r0, r0, s0        // sec-map-VABITS8 >> (2 * (addr & 2))
+    c7   and.w  r0, r0, #15       // (sec-map-VABITS8 >> (2 * (addr & 2))) & 15
+
+    c8   cmp.w  r0, #A            // VABITS4_DEFINED
+    c9   jz     hot.9
+
+    c10  cmp.w  r0, #5            // VABITS4_UNDEFINED
+    c11  jz     cold.2
+
+    c12  call   r0 = mc_LOADV16le_on_64_slow(a0)
+    c13  b      hot.10
+   */
+   hot[0]  = NInstr_SetFlagsWri (na, Nsf_TEST, a0, MASK(2));
+   hot[1]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 12));
+   hot[2]  = NInstr_ShiftWri    (na, Nsh_SHR, s0, a0, 16);
+   hot[3]  = NInstr_LoadU       (na, 8, s0, NEA_IRS(na, (HWord)&primary_map[0],
+                                                        s0, 3));
+   hot[4]  = NInstr_AluWri      (na, Nalu_AND, r0, a0, 0xFFFF);
+   hot[5]  = NInstr_ShiftWri    (na, Nsh_SHR, r0, r0, 2);
+   hot[6]  = NInstr_LoadU       (na, 1, r0, NEA_RRS(na, s0, r0, 0));
+   hot[7]  = NInstr_SetFlagsWri (na, Nsf_CMP, r0, VA_BITS8_DEFINED);
+   hot[8]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 0));
+   hot[9]  = NInstr_ImmW        (na, r0, 0xFFFFFFFFFFFF0000ULL
+                                         | (ULong)V_BITS16_DEFINED);
+   hot[10] = NInstr_Nop         (na);
+
+   cold[0] = NInstr_SetFlagsWri (na, Nsf_CMP, r0, VA_BITS8_UNDEFINED);
+   cold[1] = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 4));
+
+   cold[2] = NInstr_ImmW        (na, r0, 0xFFFFFFFFFFFF0000ULL
+                                         | (ULong)V_BITS16_UNDEFINED);
+   cold[3] = NInstr_Branch      (na, Ncc_ALWAYS, mkNLabel(Nlz_Hot, 10));
+
+    // r0 holds sec-map-VABITS8.  a0 holds the address and is 2-aligned.
+    // Extract the relevant 4 bits of r0 and inspect.
+   cold[4] = NInstr_AluWri      (na, Nalu_AND, s0, a0, 2);
+   cold[5] = NInstr_AluWrr      (na, Nalu_ADD, s0, s0, s0);
+   cold[6] = NInstr_ShiftWrr    (na, Nsh_SHR,  r0, r0, s0);
+   cold[7] = NInstr_AluWri      (na, Nalu_AND, r0, r0, 15);
+
+   cold[8] = NInstr_SetFlagsWri (na, Nsf_CMP, r0, 0xA);
+   cold[9] = NInstr_Branch      (na, Ncc_Z, mkNLabel(Nlz_Hot, 9));
+
+   cold[10]= NInstr_SetFlagsWri (na, Nsf_CMP, r0, 0x5);
+   cold[11]= NInstr_Branch      (na, Ncc_Z, mkNLabel(Nlz_Cold, 2));
+
+   cold[12]= NInstr_Call        (na, rINVALID, r0, mkNRegVec1(na, a0),
+                                     (void*)& mc_LOADV16le_on_64_slow,
+                                     "mc_LOADV16le_on_64_slow");
+   cold[13]= NInstr_Branch      (na, Ncc_ALWAYS, mkNLabel(Nlz_Hot, 10));
+
+   hot[11] = cold[14] = NULL;
+   NCodeTemplate* tmpl
+      = mkNCodeTemplate(na,"LOADV16le_on_64",
+                        /*res, parms, scratch*/1, 1, 1, hot, cold);
+   return tmpl;
+}
+
 static NCodeTemplate* mk_tmpl__LOADV8_on_64 ( NAlloc na )
 {
    NInstr** hot  = na((11+1) * sizeof(NInstr*));
@@ -4520,9 +4614,11 @@ void MC_(create_ncode_templates) ( void )
 {
    tl_assert(MC_(tmpl__LOADV64le_on_64) == NULL);
    tl_assert(MC_(tmpl__LOADV32le_on_64) == NULL);
+   tl_assert(MC_(tmpl__LOADV16le_on_64) == NULL);
    tl_assert(MC_(tmpl__LOADV8_on_64)    == NULL);
    MC_(tmpl__LOADV64le_on_64) = mk_tmpl__LOADV64le_on_64(ncode_alloc);
    MC_(tmpl__LOADV32le_on_64) = mk_tmpl__LOADV32le_on_64(ncode_alloc);
+   MC_(tmpl__LOADV16le_on_64) = mk_tmpl__LOADV16le_on_64(ncode_alloc);
    MC_(tmpl__LOADV8_on_64)    = mk_tmpl__LOADV8_on_64(ncode_alloc);
 }
 
@@ -4901,6 +4997,11 @@ VG_REGPARM(1) UWord MC_(helperc_LOADV16le) ( Addr a )
 {
    return mc_LOADV16(a, False);
 }
+VG_REGPARM(1) static ULong mc_LOADV16le_on_64_slow ( Addr a )
+{
+   return mc_LOADVn_slow( a, 16, False/*!isBigEndian*/ );
+}
+
 
 /* True if the vabits4 in vabits8 indicate a and a+1 are accessible. */
 static INLINE
