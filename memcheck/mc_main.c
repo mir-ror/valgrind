@@ -4279,6 +4279,8 @@ VG_REGPARM(1) static ULong mc_LOADV32le_on_64_slow ( Addr a );
 VG_REGPARM(1) static ULong mc_LOADV16le_on_64_slow ( Addr a );
 VG_REGPARM(1) static ULong mc_LOADV8_on_64_slow    ( Addr a );
 
+VG_REGPARM(1) static UInt  mc_LOADV32le_on_32_slow ( Addr a );
+
 static void* ncode_alloc ( UInt n ) {
    return VG_(malloc)("mc.ncode_alloc (NCode, permanent)", n);
 }
@@ -4298,6 +4300,8 @@ NCodeTemplate* MC_(tmpl__LOADV64le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV32le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV16le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV8_on_64)    = NULL;
+
+NCodeTemplate* MC_(tmpl__LOADV32le_on_32) = NULL;
 
 static NCodeTemplate* mk_tmpl__LOADV64le_on_64 ( NAlloc na )
 {
@@ -4609,6 +4613,68 @@ static NCodeTemplate* mk_tmpl__LOADV8_on_64 ( NAlloc na )
    return tmpl;
 }
 
+static NCodeTemplate* mk_tmpl__LOADV32le_on_32 ( NAlloc na )
+{
+   NInstr** hot  = na((11+1) * sizeof(NInstr*));
+   NInstr** cold = na((6+1) * sizeof(NInstr*));
+
+   NReg rINVALID = mkNRegINVALID();
+
+   NReg r0 = mkNReg(Nrr_Result,   0);
+   NReg a0 = mkNReg(Nrr_Argument, 0);
+   NReg s0 = mkNReg(Nrr_Scratch,  0);
+
+   /* NCode [r0] = "LOADV32le_on_32" [a0] s0 {
+        hot:
+          0   tst.w  a0, #3                        high?
+          1   bnz    cold.4                        yes, goto slow path
+          2   shr.w  s0, a0, #16                   s0 = pri-map-ix
+          3   ld.32  s0, [&pri_map[0] + s0 << #2]  s0 = sec-map
+          4   and.w  r0, a0, #0xFFFF               r0 = sec-map-offB
+          5   shr.w  r0, r0, #2                    r0 = sec-map-ix
+          6   ld.8   r0, [s0 + r0]                 r0 = sec-map-VABITS8
+          7   cmp.w  r0, #0xAA                     r0 == VABITS8_DEFINED?
+          8   bnz    cold.0                        no, goto cold.0
+          9   imm.w  r0, #0x0                      VBITS32_DEFINED
+          10  nop                                  continue
+        cold:
+          0   mov.w  s0, r0                        s0 = sec-map-VABITS8
+          1   imm.w  r0, #0xFFFFFFFF               VBITS32_UNDEFINED
+          2   cmp.w  s0, #0x55                     s0 == VABITS8_UNDEFINED?
+          3   bz     hot.10                        yes, continue
+          4   call   r0 = mc_LOADV32le_on_32_slow[..](a0)  call helper
+          5   b      hot.10                        continue
+      }
+   */
+   hot[0]  = NInstr_SetFlagsWri (na, Nsf_TEST, a0, MASK(4));
+   hot[1]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 4));
+   hot[2]  = NInstr_ShiftWri    (na, Nsh_SHR, s0, a0, 16);
+   hot[3]  = NInstr_LoadU       (na, 8, s0, NEA_IRS(na, (HWord)&primary_map[0], 
+                                                        s0, 2));
+   hot[4]  = NInstr_AluWri      (na, Nalu_AND, r0, a0, 0xFFFF);
+   hot[5]  = NInstr_ShiftWri    (na, Nsh_SHR, r0, r0, 2);
+   hot[6]  = NInstr_LoadU       (na, 1, r0, NEA_RRS(na, s0, r0, 0));
+   hot[7]  = NInstr_SetFlagsWri (na, Nsf_CMP, r0, VA_BITS8_DEFINED);
+   hot[8]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 0));
+   hot[9]  = NInstr_ImmW        (na, r0, V_BITS32_DEFINED);
+   hot[10] = NInstr_Nop         (na);
+
+   cold[0] = NInstr_MovW        (na, s0, r0);
+   cold[1] = NInstr_ImmW        (na, r0, V_BITS32_UNDEFINED);
+   cold[2] = NInstr_SetFlagsWri (na, Nsf_CMP, s0, VA_BITS8_UNDEFINED);
+   cold[3] = NInstr_Branch      (na, Ncc_Z, mkNLabel(Nlz_Hot, 10));
+   cold[4] = NInstr_Call        (na, rINVALID, r0, mkNRegVec1(na, a0),
+                                     (void*)& mc_LOADV32le_on_32_slow,
+                                     "mc_LOADV32le_on_32_slow");
+   cold[5] = NInstr_Branch      (na, Ncc_ALWAYS, mkNLabel(Nlz_Hot, 10));
+
+   hot[11] = cold[6] = NULL;
+   NCodeTemplate* tmpl
+      = mkNCodeTemplate(na,"LOADV32le_on_32",
+                        /*res, parms, scratch*/1, 1, 1, hot, cold);
+   return tmpl;
+}
+
 
 void MC_(create_ncode_templates) ( void )
 {
@@ -4620,6 +4686,9 @@ void MC_(create_ncode_templates) ( void )
    MC_(tmpl__LOADV32le_on_64) = mk_tmpl__LOADV32le_on_64(ncode_alloc);
    MC_(tmpl__LOADV16le_on_64) = mk_tmpl__LOADV16le_on_64(ncode_alloc);
    MC_(tmpl__LOADV8_on_64)    = mk_tmpl__LOADV8_on_64(ncode_alloc);
+
+   tl_assert(MC_(tmpl__LOADV32le_on_32) == NULL);
+   MC_(tmpl__LOADV32le_on_32) = mk_tmpl__LOADV32le_on_32(ncode_alloc);
 }
 
 
@@ -4876,6 +4945,10 @@ VG_REGPARM(1) UWord MC_(helperc_LOADV32le) ( Addr a )
    return mc_LOADV32(a, False);
 }
 VG_REGPARM(1) static ULong mc_LOADV32le_on_64_slow ( Addr a )
+{
+   return mc_LOADVn_slow( a, 32, False/*!isBigEndian*/ );
+}
+VG_REGPARM(1) static UInt mc_LOADV32le_on_32_slow ( Addr a )
 {
    return mc_LOADVn_slow( a, 32, False/*!isBigEndian*/ );
 }

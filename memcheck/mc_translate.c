@@ -4625,6 +4625,7 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
    /* ty is now the shadow type for the load. */
 
    /* ------ BEGIN inline NCode ? ------ */
+   /* NCode load cases for 64 bit hosts */
    if (guardIsAlwaysTrue(guard) && mce->hWordTy == Ity_I64 && end == Iend_LE) {
       switch (ty) {
          case Ity_I64: {
@@ -4683,6 +4684,25 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
             break;
       }
    }
+   else
+   /* NCode load cases for 32 bit hosts */
+   if (guardIsAlwaysTrue(guard) && mce->hWordTy == Ity_I32 && end == Iend_LE) {
+      switch (ty) {
+         case Ity_I32: {
+            /* Unconditional LOAD32le on 32 bit host.  Generate inline code. */
+            IRTemp         datavbits32 = newTemp(mce, Ity_I32, VSh);
+            NCodeTemplate* tmpl        = MC_(tmpl__LOADV32le_on_32);
+            IRAtom**       args        = mkIRExprVec_1( addrAct );
+            IRTemp*        ress        = mkIRTempVec_1( datavbits32 );
+            stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
+            return mkexpr(datavbits32);
+         }
+         default:
+            /* else fall through */
+            break;
+      }
+   }
+
    /* ------ END inline NCode ? ------ */
 
    /* Now cook up a call to the relevant helper function, to read the
