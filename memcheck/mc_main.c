@@ -4649,7 +4649,7 @@ static NCodeTemplate* mk_tmpl__LOADV32le_on_32 ( NAlloc na )
    hot[0]  = NInstr_SetFlagsWri (na, Nsf_TEST, a0, MASK(4));
    hot[1]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 4));
    hot[2]  = NInstr_ShiftWri    (na, Nsh_SHR, s0, a0, 16);
-   hot[3]  = NInstr_LoadU       (na, 8, s0, NEA_IRS(na, (HWord)&primary_map[0], 
+   hot[3]  = NInstr_LoadU       (na, 4, s0, NEA_IRS(na, (HWord)&primary_map[0], 
                                                         s0, 2));
    hot[4]  = NInstr_AluWri      (na, Nalu_AND, r0, a0, 0xFFFF);
    hot[5]  = NInstr_ShiftWri    (na, Nsh_SHR, r0, r0, 2);
