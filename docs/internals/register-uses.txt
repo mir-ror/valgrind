@@ -108,10 +108,10 @@ arm-linux
 Reg        Callee      Arg
 Name       Saves?      Reg?     Comment              Vex-uses?
 --------------------------------------------------------------
-r0                     int#1    int[31:0] retreg?    avail
-r1                     int#2    int[63:32] retreg?   avail
-r2                     int#3                         avail
-r3                     int#4                         avail
+r0         n           int#1    int[31:0] retreg?    avail
+r1         n           int#2    int[63:32] retreg?   avail
+r2         n           int#3                         avail
+r3         n           int#4                         avail
 r4         y                                         avail
 r5         y                                         avail
 r6         y                                         avail
@@ -120,18 +120,26 @@ r8         y                                         GSP
 r9         y (but only on Linux; not in general)     avail
 r10        y                                         avail
 r11        y                                         avail
-r12                         possibly used by linker? unavail
-r13(sp)                                              unavail
-r14(lr)                                              unavail
-r15(pc)                                              unavail
+r12        n                possibly used by linker? unavail
+r13(sp)    y                                         unavail
+r14(lr)    y (else callee can never return!)         unavail
+r15(pc)    meaningless                               unavail
 cp15/c3/r2                  thread ptr (see libvex_guest_arm.h, guest_TPIDRURO)
 
-VFP: d8-d15 are callee-saved
-r12 (IP) is probably available for use as a caller-saved
-register; but instead we use it as an intermediate for
-holding the address for F32/F64 spills, since the VFP load/store
-insns have reg+offset forms for offsets only up to 1020, which
-often isn't enough.
+VFP-v2 has 32 float regs (s0 .. s31) also accessible as 16 double
+registers (d0 .. d15) or 8 128-bit regs (q0 .. q7).  Of these, 
+the first half (s0 .. s15, d0 .. d7, q0 .. q3) are caller saved 
+and the second half (s16 .. s31, d8 .. d15, q4 .. q7) are callee
+saved.
+
+VFP-v3 extends the register bank with d16 .. d31 == q8 .. q15.
+All of these are caller saved.
+
+r12 (IP) is probably available for use as a caller-saved register; but
+instead we use it as this target's per-insn scratch register: as an
+intermediate for holding the address for F32/F64 spills, since the VFP
+load/store insns have reg+offset forms for offsets only up to 1020,
+which often isn't enough, and as an intermediate for NCode loads.
 
 
 arm64-linux
