@@ -605,6 +605,7 @@ extern NCodeTemplate* MC_(tmpl__LOADV32le_on_64);
 extern NCodeTemplate* MC_(tmpl__LOADV16le_on_64);
 extern NCodeTemplate* MC_(tmpl__LOADV8_on_64);
 
+extern NCodeTemplate* MC_(tmpl__LOADV64le_on_32);
 extern NCodeTemplate* MC_(tmpl__LOADV32le_on_32);
 
 

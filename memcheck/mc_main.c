@@ -4279,6 +4279,7 @@ VG_REGPARM(1) static ULong mc_LOADV32le_on_64_slow ( Addr a );
 VG_REGPARM(1) static ULong mc_LOADV16le_on_64_slow ( Addr a );
 VG_REGPARM(1) static ULong mc_LOADV8_on_64_slow    ( Addr a );
 
+VG_REGPARM(1) static ULong mc_LOADV64le_on_32_slow ( Addr a );
 VG_REGPARM(1) static UInt  mc_LOADV32le_on_32_slow ( Addr a );
 
 static void* ncode_alloc ( UInt n ) {
@@ -4301,6 +4302,7 @@ NCodeTemplate* MC_(tmpl__LOADV32le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV16le_on_64) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV8_on_64)    = NULL;
 
+NCodeTemplate* MC_(tmpl__LOADV64le_on_32) = NULL;
 NCodeTemplate* MC_(tmpl__LOADV32le_on_32) = NULL;
 
 static NCodeTemplate* mk_tmpl__LOADV64le_on_64 ( NAlloc na )
@@ -4613,6 +4615,71 @@ static NCodeTemplate* mk_tmpl__LOADV8_on_64 ( NAlloc na )
    return tmpl;
 }
 
+static NCodeTemplate* mk_tmpl__LOADV64le_on_32 ( NAlloc na )
+{
+   NInstr** hot  = na((12+1) * sizeof(NInstr*));
+   NInstr** cold = na((7+1) * sizeof(NInstr*));
+
+   NReg rHi = mkNReg(Nrr_Result,   0);
+   NReg rLo = mkNReg(Nrr_Result,   1);
+   NReg a0  = mkNReg(Nrr_Argument, 0);
+   NReg s0  = mkNReg(Nrr_Scratch,  0);
+
+   /* NCode [rHi,rLo] = "LOADV64le_on_32" [a0] s0 {
+        hot:
+          0   tst.w  a0, #7                        misaligned?
+          1   bnz    cold.5                        yes, goto slow path
+          2   shr.w  s0, a0, #16                   s0 = pri-map-ix
+          3   ld.32  s0, [&pri_map[0] + s0 << #2]  s0 = sec-map
+          4   and.w  rLo, a0, #0xFFFF              rLo = sec-map-offB
+          5   shr.w  rLo, rLo, #3                  rLo = sec-map-ix
+          6   ld.16  rLo, [s0 + rLo << 1]          rLo = sec-map-VABITS16
+          7   cmp.w  rLo, #0xAAAA                  rLo == VABITS16_DEFINED?
+          8   bnz    cold.0                        no, goto cold.0
+          9   imm.w  rHi, #0x0                     VBITS32_DEFINED
+          10  imm.w  rLo, #0x0                     VBITS32_DEFINED
+          11  nop                                  continue
+        cold:
+          0   mov.w  s0, rLo                        s0 = sec-map-VABITS16
+          1   imm.w  rHi, #0xFFFFFFFF              VBITS32_UNDEFINED
+          2   imm.w  rLo, #0xFFFFFFFF              VBITS32_UNDEFINED
+          3   cmp.w  s0, #0x5555                   s0 == VABITS16_UNDEFINED?
+          4   bz     hot.11                        yes, continue
+          5   call   rHi,rLo = mc_LOADV64le_on_32_slow[..](a0)  call helper
+          6   b      hot.11                        continue
+      }
+   */
+   hot[0]  = NInstr_SetFlagsWri (na, Nsf_TEST, a0, MASK(8));
+   hot[1]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 5));
+   hot[2]  = NInstr_ShiftWri    (na, Nsh_SHR, s0, a0, 16);
+   hot[3]  = NInstr_LoadU       (na, 4, s0, NEA_IRS(na, (HWord)&primary_map[0], 
+                                                        s0, 2));
+   hot[4]  = NInstr_AluWri      (na, Nalu_AND, rLo, a0, 0xFFFF);
+   hot[5]  = NInstr_ShiftWri    (na, Nsh_SHR, rLo, rLo, 3);
+   hot[6]  = NInstr_LoadU       (na, 2, rLo, NEA_RRS(na, s0, rLo, 1));
+   hot[7]  = NInstr_SetFlagsWri (na, Nsf_CMP, rLo, VA_BITS16_DEFINED);
+   hot[8]  = NInstr_Branch      (na, Ncc_NZ, mkNLabel(Nlz_Cold, 0));
+   hot[9]  = NInstr_ImmW        (na, rHi, V_BITS32_DEFINED);
+   hot[10] = NInstr_ImmW        (na, rLo, V_BITS32_DEFINED);
+   hot[11] = NInstr_Nop         (na);
+
+   cold[0] = NInstr_MovW        (na, s0, rLo);
+   cold[1] = NInstr_ImmW        (na, rHi, V_BITS32_UNDEFINED);
+   cold[2] = NInstr_ImmW        (na, rLo, V_BITS32_UNDEFINED);
+   cold[3] = NInstr_SetFlagsWri (na, Nsf_CMP, s0, VA_BITS16_UNDEFINED);
+   cold[4] = NInstr_Branch      (na, Ncc_Z, mkNLabel(Nlz_Hot, 11));
+   cold[5] = NInstr_Call        (na, rHi, rLo, mkNRegVec1(na, a0),
+                                     (void*)& mc_LOADV64le_on_32_slow,
+                                     "mc_LOADV64le_on_32_slow");
+   cold[6] = NInstr_Branch      (na, Ncc_ALWAYS, mkNLabel(Nlz_Hot, 11));
+
+   hot[12] = cold[7] = NULL;
+   NCodeTemplate* tmpl
+      = mkNCodeTemplate(na,"LOADV64le_on_32",
+                        /*res, parms, scratch*/2, 1, 1, hot, cold);
+   return tmpl;
+}
+
 static NCodeTemplate* mk_tmpl__LOADV32le_on_32 ( NAlloc na )
 {
    NInstr** hot  = na((11+1) * sizeof(NInstr*));
@@ -4626,7 +4693,7 @@ static NCodeTemplate* mk_tmpl__LOADV32le_on_32 ( NAlloc na )
 
    /* NCode [r0] = "LOADV32le_on_32" [a0] s0 {
         hot:
-          0   tst.w  a0, #3                        high?
+          0   tst.w  a0, #3                        misaligned?
           1   bnz    cold.4                        yes, goto slow path
           2   shr.w  s0, a0, #16                   s0 = pri-map-ix
           3   ld.32  s0, [&pri_map[0] + s0 << #2]  s0 = sec-map
@@ -4687,7 +4754,9 @@ void MC_(create_ncode_templates) ( void )
    MC_(tmpl__LOADV16le_on_64) = mk_tmpl__LOADV16le_on_64(ncode_alloc);
    MC_(tmpl__LOADV8_on_64)    = mk_tmpl__LOADV8_on_64(ncode_alloc);
 
+   tl_assert(MC_(tmpl__LOADV64le_on_32) == NULL);
    tl_assert(MC_(tmpl__LOADV32le_on_32) == NULL);
+   MC_(tmpl__LOADV64le_on_32) = mk_tmpl__LOADV64le_on_32(ncode_alloc);
    MC_(tmpl__LOADV32le_on_32) = mk_tmpl__LOADV32le_on_32(ncode_alloc);
 }
 
@@ -4827,6 +4896,11 @@ VG_REGPARM(1) static ULong mc_LOADV64le_on_64_slow ( Addr a )
 {
    return mc_LOADVn_slow( a, 64, False/*!isBigEndian*/ );
 }
+VG_REGPARM(1) static ULong mc_LOADV64le_on_32_slow ( Addr a )
+{
+   return mc_LOADVn_slow( a, 64, False/*!isBigEndian*/ );
+}
+
 
 static INLINE
 void mc_STOREV64 ( Addr a, ULong vbits64, Bool isBigEndian )

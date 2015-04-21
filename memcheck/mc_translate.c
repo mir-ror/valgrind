@@ -4688,6 +4688,21 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
    /* NCode load cases for 32 bit hosts */
    if (guardIsAlwaysTrue(guard) && mce->hWordTy == Ity_I32 && end == Iend_LE) {
       switch (ty) {
+         case Ity_I64: {
+            /* Unconditional LOAD64le on 32 bit host.  Generate inline code. */
+            IRTemp         datavbitsLO = newTemp(mce, Ity_I32, VSh);
+            IRTemp         datavbitsHI = newTemp(mce, Ity_I32, VSh);
+            NCodeTemplate* tmpl        = MC_(tmpl__LOADV64le_on_32);
+            IRAtom**       args        = mkIRExprVec_1( addrAct );
+            IRTemp*        ress        = mkIRTempVec_2( datavbitsHI,
+                                                        datavbitsLO );
+            stmt( 'V', mce, IRStmt_NCode(tmpl, args, ress) );
+            IRAtom* datavbits64
+              = assignNew('V', mce, Ity_I64,
+                          binop(Iop_32HLto64, mkexpr(datavbitsHI),
+                                              mkexpr(datavbitsLO)));
+            return datavbits64;
+         }
          case Ity_I32: {
             /* Unconditional LOAD32le on 32 bit host.  Generate inline code. */
             IRTemp         datavbits32 = newTemp(mce, Ity_I32, VSh);
