@@ -48,6 +48,7 @@
 #include "pub_core_ume.h"
 #include "pub_core_options.h"
 #include "pub_core_syscall.h"
+#include "pub_core_signals.h"         /* VG_(extend_stack) */
 #include "pub_core_tooliface.h"       /* VG_TRACK */
 #include "pub_core_libcsetjmp.h"      // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"     /* ThreadArchState */
@@ -394,7 +395,6 @@ Addr setup_client_stack( void*  init_sp,
    * by the values in vex_archinfo.
    */
 
-   SysRes res;
    HChar **cpp;
    HChar *strtab;		/* string table */
    HChar *stringbase;
@@ -504,80 +504,52 @@ Addr setup_client_stack( void*  init_sp,
 
    /* ==================== allocate space ==================== */
 
-   { SizeT anon_size   = clstack_end - clstack_start + 1;
-     SizeT resvn_size  = clstack_max_size - anon_size;
-     Addr  anon_start  = clstack_start;
-     Addr  resvn_start = anon_start - resvn_size;
-     SizeT inner_HACK  = 0;
-     Bool  ok;
+   SysRes sres =
+      VG_(am_alloc_extensible_client_stack) ( clstack_end + 1, clstack_max_size,
+                                              info->stack_prot);
 
-     /* So far we've only accounted for space requirements down to the
-        stack pointer.  If this target's ABI requires a redzone below
-        the stack pointer, we need to allocate an extra page, to
-        handle the worst case in which the stack pointer is almost at
-        the bottom of a page, and so there is insufficient room left
-        over to put the redzone in.  In this case the simple thing to
-        do is allocate an extra page, by shrinking the reservation by
-        one page and growing the anonymous area by a corresponding
-        page. */
-     vg_assert(VG_STACK_REDZONE_SZB >= 0);
-     vg_assert(VG_STACK_REDZONE_SZB < VKI_PAGE_SIZE);
-     if (VG_STACK_REDZONE_SZB > 0) {
-        vg_assert(resvn_size > VKI_PAGE_SIZE);
-        resvn_size -= VKI_PAGE_SIZE;
-        anon_start -= VKI_PAGE_SIZE;
-        anon_size += VKI_PAGE_SIZE;
-     }
-
-     vg_assert(VG_IS_PAGE_ALIGNED(anon_size));
-     vg_assert(VG_IS_PAGE_ALIGNED(resvn_size));
-     vg_assert(VG_IS_PAGE_ALIGNED(anon_start));
-     vg_assert(VG_IS_PAGE_ALIGNED(resvn_start));
-     vg_assert(resvn_start == clstack_end + 1 - clstack_max_size);
-
-#    ifdef ENABLE_INNER
-     inner_HACK = 1024*1024; // create 1M non-fault-extending stack
-#    endif
-
-     if (0)
-        VG_(printf)("%#lx 0x%lx  %#lx 0x%lx\n",
-                    resvn_start, resvn_size, anon_start, anon_size);
-
-     /* Create a shrinkable reservation followed by an anonymous
-        segment.  Together these constitute a growdown stack. */
-     res = VG_(mk_SysRes_Error)(0);
-     ok = VG_(am_create_reservation)(
-             resvn_start,
-             resvn_size -inner_HACK,
-             SmUpper, 
-             anon_size +inner_HACK
-          );
-     if (ok) {
-        /* allocate a stack - mmap enough space for the stack */
-        res = VG_(am_mmap_anon_fixed_client)(
-                 anon_start -inner_HACK,
-                 anon_size +inner_HACK,
-	         info->stack_prot
-	      );
-     }
-     if ((!ok) || sr_isError(res)) {
-        /* Allocation of the stack failed.  We have to stop. */
-        VG_(printf)("valgrind: "
-                    "I failed to allocate space for the application's stack.\n");
-        VG_(printf)("valgrind: "
-                    "This may be the result of a very large --main-stacksize=\n");
-        VG_(printf)("valgrind: setting.  Cannot continue.  Sorry.\n\n");
-        VG_(exit)(1);
-     }
-
-     vg_assert(ok);
-     vg_assert(!sr_isError(res)); 
-
-     /* Record stack extent -- needed for stack-change code. */
-     VG_(clstk_start_base) = anon_start -inner_HACK;
-     VG_(clstk_end)  = VG_(clstk_start_base) + anon_size +inner_HACK -1;
-
+   if (sr_isError(sres)) {
+      /* Allocation of the stack failed.  We have to stop. */
+      VG_(printf)("valgrind: "
+                  "I failed to allocate space for the application's stack.\n");
+      VG_(printf)("valgrind: "
+                  "This may be the result of a very large --main-stacksize=\n");
+      VG_(printf)("valgrind: setting.  Cannot continue.  Sorry.\n\n");
+      VG_(exit)(1);
    }
+
+   /* Now grow the stack to what is needed */
+
+   /* So far we've only accounted for space requirements down to the
+      stack pointer.  If this target's ABI requires a redzone below
+      the stack pointer, we need to allocate an extra page, to
+      handle the worst case in which the stack pointer is almost at
+      the bottom of a page, and so there is insufficient room left
+      over to put the redzone in. */
+   vg_assert(VG_STACK_REDZONE_SZB >= 0);
+   vg_assert(VG_STACK_REDZONE_SZB < VKI_PAGE_SIZE);
+   if (VG_STACK_REDZONE_SZB > 0) {
+      clstack_start -= VKI_PAGE_SIZE;
+   }
+
+   SizeT inner_HACK  = 0;
+#  ifdef ENABLE_INNER
+   inner_HACK = 1024*1024; // create 1M non-fault-extending stack
+#  endif
+
+   clstack_start -= inner_HACK;
+
+   if (! VG_(extend_stack) ( /*tid*/1, clstack_start)) {
+      VG_(printf)("valgrind: "
+                  "I failed to allocate space for the application's stack.\n");
+      VG_(printf)("valgrind: setting.  Cannot continue.  Sorry.\n\n");
+      VG_(exit)(1);
+   }
+
+   /* Record stack extent -- needed for stack-change code. */
+   VG_(clstk_start_base) = clstack_start;
+   VG_(clstk_end) = clstack_end;
+
 
    /* ==================== create client stack ==================== */
 

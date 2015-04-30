@@ -2918,7 +2918,7 @@ const NSegment *VG_(am_extend_into_adjacent_reservation_client)( Addr addr,
 
 /* Allocate the client data (brk) segment at address BASE. The brk segment
    can be at most MAX_SIZE bytes large. It is represented as an expandable
-   anonymous mapping abutted towards lower addresses by a shrinkable 
+   anonymous mapping abutted towards higher addresses by a shrinkable 
    reservation segment. The initial size of the anonymous mapping is 1 page.
    BASE is the preferred address for the data segment but cannot be
    guaranteed. Therefore, if successful, the function returns the actual
@@ -2968,6 +2968,41 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size )
    UInt prot = VKI_PROT_READ | VKI_PROT_WRITE | VKI_PROT_EXEC;
 
    return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
+}
+
+
+/* Allocate the client stack segment beginning at STACK_END. The stack segment
+   can be at most MAX_SIZE bytes large. It is represented as an expandable
+   anonymous mapping abutted towards lower addresses by a shrinkable 
+   reservation segment. The initial size of the anonymous mapping is 1 page.
+   If the stack could not be allocated the function returns an error. */
+SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end, SizeT max_size,
+                                               UInt prot)
+{
+   Bool   ok;
+   SizeT  anon_size   = VKI_PAGE_SIZE;
+   Addr   anon_start  = stack_end  - anon_size;
+   SizeT  resvn_size  = max_size   - anon_size;
+   Addr   resvn_start = anon_start - resvn_size;
+
+   aspacem_assert(max_size > anon_size);   // avoid wrap-around for resvn_size
+   aspacem_assert(VG_IS_PAGE_ALIGNED(anon_size));
+   aspacem_assert(VG_IS_PAGE_ALIGNED(resvn_size));
+   aspacem_assert(VG_IS_PAGE_ALIGNED(anon_start));
+   aspacem_assert(VG_IS_PAGE_ALIGNED(resvn_start));
+
+   if (0)
+      VG_(debugLog)(0, "aspacem", "%#lx 0x%lx  %#lx 0x%lx\n",
+                    resvn_start, resvn_size, anon_start, anon_size);
+
+   /* Create a shrinkable reservation followed by an anonymous
+      segment.  Together these constitute a growdown stack. */
+   ok = VG_(am_create_reservation)( resvn_start, resvn_size,
+                                    SmUpper, anon_size );
+   if (ok)
+      return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
+
+   return VG_(mk_SysRes_Error)( VKI_ENOMEM );
 }
 
 
