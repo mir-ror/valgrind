@@ -2916,21 +2916,23 @@ const NSegment *VG_(am_extend_into_adjacent_reservation_client)( Addr addr,
 /*---                                                           ---*/
 /*-----------------------------------------------------------------*/
 
-/* Allocate the client data segment at address BASE with size SIZE. It is
-   an expandable anonymous mapping abutting a shrinkable reservation segment. 
+/* Allocate the client data (brk) segment at address BASE. The brk segment
+   can be at most MAX_SIZE bytes large. It is represented as an expandable
+   anonymous mapping abutted towards lower addresses by a shrinkable 
+   reservation segment. The initial size of the anonymous mapping is 1 page.
    BASE is the preferred address for the data segment but cannot be
    guaranteed. Therefore, if successful, the function returns the actual
    base address of the data segment, possibly different from BASE. If the
    data segment could not be allocated the function returns an error. */
-SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT size )
+SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size )
 {
    Bool   ok;
    Addr   anon_start  = base;
    SizeT  anon_size   = VKI_PAGE_SIZE;
    Addr   resvn_start = anon_start + anon_size;
-   SizeT  resvn_size  = size - anon_size;
+   SizeT  resvn_size  = max_size - anon_size;
 
-   aspacem_assert(size > anon_size);   // avoid wrap-around for resvn_size
+   aspacem_assert(max_size > anon_size);   // avoid wrap-around for resvn_size
    aspacem_assert(VG_IS_PAGE_ALIGNED(anon_size));
    aspacem_assert(VG_IS_PAGE_ALIGNED(resvn_size));
    aspacem_assert(VG_IS_PAGE_ALIGNED(anon_start));
