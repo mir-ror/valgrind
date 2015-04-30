@@ -550,6 +550,9 @@ Addr setup_client_stack( void*  init_sp,
    VG_(clstk_start_base) = clstack_start;
    VG_(clstk_end) = clstack_end;
 
+   VG_(debugLog)(2, "initimg", "client stack start = %#lx\n",
+                 VG_(clstk_start_base));
+   VG_(debugLog)(2, "initimg", "client stack end   = %#lx\n", VG_(clstk_end));
 
    /* ==================== create client stack ==================== */
 
