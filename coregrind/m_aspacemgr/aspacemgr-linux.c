@@ -2924,7 +2924,7 @@ const NSegment *VG_(am_extend_into_adjacent_reservation_client)( Addr addr,
    guaranteed. Therefore, if successful, the function returns the actual
    base address of the data segment, possibly different from BASE. If the
    data segment could not be allocated the function returns an error. */
-SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size )
+SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
 {
    Bool   ok;
    Addr   anon_start  = base;
@@ -2959,13 +2959,6 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size )
       is no Plan C. */
    if (!ok)
       return VG_(mk_SysRes_Error)( VKI_ENOMEM );
-
-   /* We make the data segment (heap) executable because LinuxThreads on
-      ppc32 creates trampolines in this area.  Also, on x86/Linux the data
-      segment is RWX natively, at least according to /proc/self/maps.
-      Also, having a non-executable data seg would kill any program which
-      tried to create code in the data seg and then run it. */
-   UInt prot = VKI_PROT_READ | VKI_PROT_WRITE | VKI_PROT_EXEC;
 
    return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
 }

@@ -310,7 +310,8 @@ extern Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 
 
 // Client memory segments
-extern SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT size );
+extern SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size,
+                                             UInt prot );
 extern SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end,
                                                       SizeT max_size,
                                                       UInt prot );

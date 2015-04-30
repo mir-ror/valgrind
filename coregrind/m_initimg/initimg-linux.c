@@ -811,7 +811,14 @@ static void setup_client_dataseg ( SizeT max_size )
    /* Because there's been no brk activity yet: */
    vg_assert(VG_(brk_base) == VG_(brk_limit));
 
-   SysRes sres = VG_(am_alloc_client_dataseg)( VG_(brk_base), max_size);
+   /* We make the data segment (heap) executable because LinuxThreads on
+      ppc32 creates trampolines in this area.  Also, on x86/Linux the data
+      segment is RWX natively, at least according to /proc/self/maps.
+      Also, having a non-executable data seg would kill any program which
+      tried to create code in the data seg and then run it. */
+   UInt prot = VKI_PROT_READ | VKI_PROT_WRITE | VKI_PROT_EXEC;
+
+   SysRes sres = VG_(am_alloc_client_dataseg)( VG_(brk_base), max_size, prot);
 
    if (sr_isError(sres)) {
       // FIXME: use VG_(fmsg) and before that revert_to_stderr
