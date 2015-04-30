@@ -2276,32 +2276,11 @@ void async_signalhandler ( Int sigNo,
 */
 Bool VG_(extend_stack)(ThreadId tid, Addr addr)
 {
-   SizeT udelta;
-
-   /* Get the segment containing addr. */
-   const NSegment* seg = VG_(am_find_nsegment)(addr);
-   vg_assert(seg != NULL);
-
-   /* TODO: the test "seg->kind == SkAnonC" is really inadequate,
-      because although it tests whether the segment is mapped
-      _somehow_, it doesn't check that it has the right permissions
-      (r,w, maybe x) ?  */
-   if (seg->kind == SkAnonC)
-      /* addr is already mapped.  Nothing to do. */
-      return True;
-
-   const NSegment* seg_next = VG_(am_next_nsegment)( seg, True/*fwds*/ );
-   vg_assert(seg_next != NULL);
-
-   udelta = VG_PGROUNDUP(seg_next->start - addr);
-
-   VG_(debugLog)(1, "signals", 
-                    "extending a stack base 0x%llx down by %lld\n",
-                    (ULong)seg_next->start, (ULong)udelta);
    Bool overflow;
-   if (! VG_(am_extend_into_adjacent_reservation_client)
-       ( seg_next->start, -(SSizeT)udelta, &overflow )) {
-      Addr new_stack_base = seg_next->start - udelta;
+   SysRes sres = VG_(am_extend_client_stack)(addr, &overflow);
+
+   if (sr_isError(sres)) {
+      Addr new_stack_base = sr_Err(sres);
       if (overflow)
          VG_(umsg)("Stack overflow in thread #%d: can't grow stack to %#lx\n",
                    tid, new_stack_base);
