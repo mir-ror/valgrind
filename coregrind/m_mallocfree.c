@@ -38,7 +38,6 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
-#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"   // For VG_INVALID_THREADID
 #include "pub_core_gdbserver.h"
 #include "pub_core_transtab.h"
@@ -759,7 +758,7 @@ void VG_(out_of_memory_NORETURN) ( const HChar* who, SizeT szB )
       "\n"
       "    Valgrind's memory management: out of memory:\n"
       "       %s's request for %llu bytes failed.\n"
-      "       %llu bytes have already been allocated.\n"
+      "       %llu bytes have already been mmap-ed ANONYMOUS.\n"
       "    Valgrind cannot continue.  Sorry.\n\n"
       "    There are several possible reasons for this.\n"
       "    - You have some kind of memory limit in place.  Look at the\n"

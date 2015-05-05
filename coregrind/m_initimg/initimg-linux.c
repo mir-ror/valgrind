@@ -50,7 +50,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_signals.h"         /* VG_(extend_stack) */
 #include "pub_core_tooliface.h"       /* VG_TRACK */
-#include "pub_core_libcsetjmp.h"      // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"     /* ThreadArchState */
 #include "priv_initimg_pathscan.h"
 #include "pub_core_initimg.h"         /* self */
