@@ -3066,16 +3066,14 @@ SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end, SizeT max_size,
 
 
 /* Extend the client stack such that ADDR is mapped. Unless ADDR is already
-   mapped in which case nothing happens. If the function fails, it returns
-   an error and provides the address to which the stack should have been
-   extended. OVERFLOW indicates whether this failure was due to an overflow
-   or some other cause. */
-SysRes VG_(am_extend_client_stack) ( Addr addr, Bool *overflow )
+   mapped in which case nothing happens. Return an error if the stack could
+   not be extended. A +1 error code means "overflow" and 0 means some other
+   failure. */
+SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
 {
    SizeT udelta;
    SysRes sres = VG_(mk_SysRes_Success)(0);
-
-   *overflow = False;
+   Bool overflow = False;
 
    /* Get the segment containing addr. */
    const NSegment *seg = VG_(am_find_nsegment)(addr);
@@ -3085,22 +3083,27 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Bool *overflow )
       because although it tests whether the segment is mapped
       _somehow_, it doesn't check that it has the right permissions
       (r,w, maybe x) ?  */
-   if (seg->kind == SkAnonC)
+   if (seg->kind == SkAnonC) {
       /* ADDR is already mapped.  Nothing to do. */
+      *new_stack_base = seg->start;   // not really "new" :)
       return sres;
+   }
 
    const NSegment *anon_seg = VG_(am_next_nsegment)(seg, True/*fwds*/);
    vg_assert(anon_seg != NULL);
 
    udelta = VG_PGROUNDUP(anon_seg->start - addr);
+   *new_stack_base = anon_seg->start - udelta;
 
    VG_(debugLog)(1, "signals", 
                     "extending a stack base 0x%lx down by %lu\n",
                     anon_seg->start, udelta);
    if (! VG_(am_extend_into_adjacent_reservation_client)
-       ( anon_seg->start, -(SSizeT)udelta, overflow )) {
-      Addr new_stack_base = anon_seg->start - udelta;
-      sres = VG_(mk_SysRes_Error)(new_stack_base);
+       ( anon_seg->start, -(SSizeT)udelta, &overflow )) {
+      if (overflow)
+         sres = VG_(mk_SysRes_Error)(1);
+      else
+         sres = VG_(mk_SysRes_Error)(0);
    }
    return sres;
 }

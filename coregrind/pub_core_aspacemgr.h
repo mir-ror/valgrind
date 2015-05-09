@@ -316,7 +316,7 @@ extern SysRes VG_(am_resize_client_dataseg) ( Addr oldbrk, Addr newbrk );
 extern SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end,
                                                       SizeT max_size,
                                                       UInt prot );
-extern SysRes VG_(am_extend_client_stack) ( Addr addr, Bool *overflow );
+extern SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base );
 
 //--------------------------------------------------------------
 // Valgrind (non-client) thread stacks.  V itself runs on such

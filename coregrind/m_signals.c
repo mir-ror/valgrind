@@ -2275,15 +2275,16 @@ void async_signalhandler ( Int sigNo,
 */
 Bool VG_(extend_stack)(ThreadId tid, Addr addr)
 {
-   Bool overflow;
-   SysRes sres = VG_(am_extend_client_stack)(addr, &overflow);
+   Addr new_stack_base;
+   SysRes sres = VG_(am_extend_client_stack)(addr, &new_stack_base);
 
    if (sr_isError(sres)) {
-      Addr new_stack_base = sr_Err(sres);
-      if (overflow)
+      if (sr_Err(sres) == 1) {
          VG_(umsg)("Stack overflow in thread #%d: can't grow stack to %#lx\n",
                    tid, new_stack_base);
-      else
+         VG_(umsg)("Increasing the size of the main thread stack with "
+                   "--main-stacksize=<number> might help\n");
+      } else
          VG_(umsg)("Cannot map memory to grow the stack for thread #%d "
                    "to %#lx\n", tid, new_stack_base);
       return False;
