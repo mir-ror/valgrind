@@ -11,29 +11,33 @@ int main(void)
    int i;
    void* orig_ds = sbrk(0);
    void* ds = orig_ds;
-   void* vals[10];
-   void* res __attribute__((unused));
-#define EOL ((void*)( ~(long)0 ))
-   vals[0] = (void*)0;
-   vals[1] = (void*)1;
-   vals[2] = ds - 0x1;          // small shrink
-   vals[3] = ds;
-   vals[4] = ds + 0x1000;       // small growth
-   vals[5] = ds + 0x40000000;   // too-big growth
-   vals[6] = ds + 0x500;        // shrink a little, but still above start size
-   vals[7] = ds - 0x1;          // shrink below start size
-//   vals[8] = ds - 0x1000;       // shrink a lot below start size (into text)
-//   vals[9] = EOL;
-   vals[8] = EOL;
+   struct {
+     void *brkval;
+     const char *what;
+   } vals[] = {
+     { (void *)0,  "like sbrk(0)" },
+     { (void *)1,  "shrink to 0x1 --> expect underflow" },
+     { ds - 0x1,   "shrink just below current brk value --> expect underflow" },
+     { ds,         "brk to current brk value" },
+     { ds + 0x1000,"grow by 0x1000" },
+     { ds + 0x40000000, "excessive growth --> expect overflow" },
+     { ds + 0x200, "shrink by 0x800" },
+   };
 
-   for (i = 0; EOL != vals[i]; i++) {
-      res = (void*)syscall(__NR_brk, vals[i]);
+   fprintf(stderr, "KERNEL __NR_brk\n");
+   for (i = 0; i < sizeof vals / sizeof vals[0]; i++) {
+      fprintf(stderr, "...%s\n", vals[i].what);
+      void *res = (void*)syscall(__NR_brk, vals[i].brkval);
+      fprintf(stderr, "res = %p\n", res);
    }
 
+   fprintf(stderr, "LIBC brk\n");
    assert( 0 == brk(orig_ds) );  // libc brk()
 
-   for (i = 0; EOL != vals[i]; i++) {
-      res = (void*)(long)brk(vals[i]);
+   for (i = 0; i < sizeof vals / sizeof vals[0]; i++) {
+      fprintf(stderr, "...%s\n", vals[i].what);
+      int rc = brk(vals[i].brkval);
+      fprintf(stderr, "rc = %d\n", rc);
    }
 
    return 0;

@@ -1187,9 +1187,6 @@ void ML_(buf_and_len_post_check) ( ThreadId tid, SysRes res,
 
 static Addr do_brk ( Addr newbrk, ThreadId tid )
 {
-   NSegment const* aseg;
-   Addr newbrkP;
-   SizeT delta;
    Bool debug = False;
 
    if (debug)
@@ -1198,76 +1195,37 @@ static Addr do_brk ( Addr newbrk, ThreadId tid )
 
    if (0) VG_(am_show_nsegments)(0, "in_brk");
 
-   if (newbrk < VG_(brk_base))
-      /* Clearly impossible. */
-      goto bad;
+   /* Special case: a 0 argument means to return the current high water mark */
+   if (newbrk == 0) return VG_(brk_limit);
 
-   if (newbrk < VG_(brk_limit)) {
-      /* shrinking the data segment.  Be lazy and don't munmap the
-         excess area. */
-      NSegment const * seg = VG_(am_find_nsegment)(newbrk);
-      vg_assert(seg);
+   SysRes sres = VG_(am_resize_client_dataseg)(VG_(brk_limit), newbrk);
 
-      if (seg->hasT)
-         VG_(discard_translations)( newbrk, VG_(brk_limit) - newbrk, 
-                                    "do_brk(shrink)" );
-      /* Since we're being lazy and not unmapping pages, we have to
-         zero out the area, so that if the area later comes back into
-         circulation, it will be filled with zeroes, as if it really
-         had been unmapped and later remapped.  Be a bit paranoid and
-         try hard to ensure we're not going to segfault by doing the
-         write - check both ends of the range are in the same segment
-         and that segment is writable. */
-      NSegment const * seg2;
-
-      seg2 = VG_(am_find_nsegment)( VG_(brk_limit) - 1 );
-      vg_assert(seg2);
-
-      if (seg == seg2 && seg->hasW)
-         VG_(memset)( (void*)newbrk, 0, VG_(brk_limit) - newbrk );
-
-      VG_(brk_limit) = newbrk;
-      return newbrk;
-   }
-
-   /* otherwise we're expanding the brk segment. */
-   if (VG_(brk_limit) > VG_(brk_base))
-      aseg = VG_(am_find_nsegment)( VG_(brk_limit)-1 );
-   else
-      aseg = VG_(am_find_nsegment)( VG_(brk_limit) );
-
-   /* These should be assured by setup_client_dataseg in m_main. */
-   vg_assert(aseg);
-   vg_assert(aseg->kind == SkAnonC);
-
-   if (newbrk <= aseg->end + 1) {
-      /* still fits within the anon segment. */
-      VG_(brk_limit) = newbrk;
-      return newbrk;
-   }
-
-   newbrkP = VG_PGROUNDUP(newbrk);
-   delta = newbrkP - (aseg->end + 1);
-   vg_assert(delta > 0);
-   vg_assert(VG_IS_PAGE_ALIGNED(delta));
-   
-   Bool overflow;
-   if (! VG_(am_extend_into_adjacent_reservation_client)( aseg->start, delta,
-                                                          &overflow)) {
-      if (overflow)
+   if (sr_isError(sres)) {
+      if (sr_Err(sres) == 1)
          VG_(umsg)("brk segment overflow in thread #%d: can't grow to %#lx\n",
-                   tid, newbrkP);
+                   tid, newbrk);
+      else if (sr_Err(sres) == -1)
+         VG_(umsg)("brk segment underflow in thread #%d: can't shrink to %#lx\n",
+                   tid, newbrk);
       else
-         VG_(umsg)("Cannot map memory to grow brk segment in thread #%d "
-                   "to %#lx\n", tid, newbrkP);
-      goto bad;
+         VG_(umsg)("Cannot map memory to %s brk segment in thread #%d "
+                   "to %#lx\n", newbrk > VG_(brk_limit) ? "grow" : "shrink",
+                   tid, newbrk);
+      return VG_(brk_limit);
+   }
+
+   /* If the brk segment was shrunk, discard translations if there were any. */
+   if (newbrk < VG_(brk_limit)) {
+      const NSegment *aseg = VG_(am_find_nsegment)(VG_(brk_limit) - 1);
+      vg_assert(aseg);
+
+      if (aseg->hasT)
+         VG_(discard_translations)(newbrk, VG_(brk_limit) - newbrk, 
+                                   "do_brk(shrink)");
    }
 
    VG_(brk_limit) = newbrk;
    return newbrk;
-
-  bad:
-   return VG_(brk_limit);
 }
 
 

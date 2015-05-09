@@ -2964,6 +2964,71 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
    return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
 }
 
+/* Resize the client brk segment from OLDBRK to NEWBRK. Return an error if
+   the resize operation could not be completed. A +1 error core means
+   "overflow", a -1 error code means "underflow", and 0 means some other
+   failure. */
+SysRes VG_(am_resize_client_dataseg) ( Addr oldbrk, Addr newbrk )
+{
+   static Addr brk_base = 0;
+
+   SysRes success = VG_(mk_SysRes_Success)(0);
+
+   if (newbrk == oldbrk) return success;     // nothing to do
+
+   /* We rely on the caller to pass in the correct address here. Ideally,
+      we should keep the state (base/limit) in the address space manager and
+      not at the call site. */
+   if (brk_base == 0) brk_base = oldbrk;
+
+   const NSegment *aseg = VG_(am_find_nsegment)(brk_base);
+   aspacem_assert(aseg && aseg->kind == SkAnonC);
+
+   if (newbrk < oldbrk) {
+      /* Shrinking the data segment.  Be lazy and don't munmap the
+         excess area. */
+
+      /* Test for underflow. */
+      if (newbrk < brk_base) return VG_(mk_SysRes_Error)(-1);
+
+      /* Since we're being lazy and not unmapping pages, we have to
+         zero out the area, so that if the area later comes back into
+         circulation, it will be filled with zeroes, as if it really
+         had been unmapped and later remapped.  Be a bit paranoid and
+         try hard to ensure we're not going to segfault by doing the
+         write - check both ends of the range are in the same segment
+         and that segment is writable. */
+      const NSegment *nseg = VG_(am_find_nsegment)(newbrk);
+      aspacem_assert(nseg == aseg);
+      if (aseg->hasW)
+         VG_(memset)( (void*)newbrk, 0, oldbrk - newbrk );
+
+      return success;
+   }
+
+   /* Otherwise we're expanding the brk segment. */
+   if (newbrk <= aseg->end + 1) {
+      /* Still fits within the anon segment. */
+      return success;
+   }
+
+   Addr newbrkP = VG_PGROUNDUP(newbrk);
+   SizeT delta = newbrkP - (aseg->end + 1);
+   aspacem_assert(delta > 0);
+   aspacem_assert(VG_IS_PAGE_ALIGNED(delta));
+   
+   Bool overflow;
+   if (! VG_(am_extend_into_adjacent_reservation_client)( aseg->start, delta,
+                                                          &overflow)) {
+      if (overflow)
+         return VG_(mk_SysRes_Error)(1);
+      else
+         return VG_(mk_SysRes_Error)(0);
+   }
+
+   return success;
+}
+
 
 /* Allocate the client stack segment beginning at STACK_END. The stack segment
    can be at most MAX_SIZE bytes large. It is represented as an expandable
