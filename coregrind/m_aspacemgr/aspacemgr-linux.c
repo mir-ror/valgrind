@@ -2965,7 +2965,7 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
 }
 
 /* Resize the client brk segment from OLDBRK to NEWBRK. Return an error if
-   the resize operation could not be completed. A +1 error core means
+   the resize operation could not be completed. A +1 error code means
    "overflow", a -1 error code means "underflow", and 0 means some other
    failure. */
 SysRes VG_(am_resize_client_dataseg) ( Addr oldbrk, Addr newbrk )
