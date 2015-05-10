@@ -262,32 +262,6 @@ extern Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len );
    expected to belong to a client segment. */
 extern void VG_(am_set_segment_hasT)( Addr addr );
 
-/* --- --- --- reservations --- --- --- */
-
-/* Create a reservation from START .. START+LENGTH-1, with the given
-   ShrinkMode.  When checking whether the reservation can be created,
-   also ensure that at least abs(EXTRA) extra free bytes will remain
-   above (> 0) or below (< 0) the reservation.
-
-   The reservation will only be created if it, plus the extra-zone,
-   falls entirely within a single free segment.  The returned Bool
-   indicates whether the creation succeeded. */
-extern Bool VG_(am_create_reservation) 
-   ( Addr start, SizeT length, ShrinkMode smode, SSizeT extra );
-
-/* ADDR is the start address of an anonymous client mapping.  This fn extends
-   the mapping by DELTA bytes, taking the space from a reservation section
-   which must be adjacent.  If DELTA is positive, the segment is
-   extended forwards in the address space, and the reservation must be
-   the next one along.  If DELTA is negative, the segment is extended
-   backwards in the address space and the reservation must be the
-   previous one.  DELTA must be page aligned.  abs(DELTA) must not
-   exceed the size of the reservation segment minus one page, that is,
-   the reservation segment after the operation must be at least one
-   page long. The function returns a pointer to the resized segment. */
-extern const NSegment *VG_(am_extend_into_adjacent_reservation_client) 
-   ( Addr addr, SSizeT delta, /*OUT*/Bool *overflow );
-
 /* --- --- --- resizing/move a mapping --- --- --- */
 
 /* This function grows a client mapping in place into an adjacent free segment.

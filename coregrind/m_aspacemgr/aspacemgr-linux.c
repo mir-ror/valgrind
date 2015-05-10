@@ -2745,8 +2745,8 @@ void VG_(am_set_segment_hasT)( Addr addr )
    falls entirely within a single free segment.  The returned Bool
    indicates whether the creation succeeded. */
 
-Bool VG_(am_create_reservation) ( Addr start, SizeT length, 
-                                  ShrinkMode smode, SSizeT extra )
+static Bool create_reservation (Addr start, SizeT length, 
+                                ShrinkMode smode, SSizeT extra)
 {
    Int      startI, endI;
    NSegment seg;
@@ -2808,9 +2808,9 @@ Bool VG_(am_create_reservation) ( Addr start, SizeT length,
    the reservation segment after the operation must be at least one
    page long. The function returns a pointer to the resized segment. */
 
-const NSegment *VG_(am_extend_into_adjacent_reservation_client)( Addr addr, 
-                                                                 SSizeT delta,
-                                                                 Bool *overflow)
+static const NSegment *
+extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
+                                         Bool *overflow)
 {
    Int    segA, segR;
    UInt   prot;
@@ -2941,8 +2941,7 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
 
    /* Try to create the data seg and associated reservation where
       BASE says. */
-   ok = VG_(am_create_reservation)( resvn_start, resvn_size, 
-                                    SmLower, anon_size );
+   ok = create_reservation(resvn_start, resvn_size, SmLower, anon_size);
 
    if (!ok) {
       /* Hmm, that didn't work.  Well, let aspacem suggest an address
@@ -2951,8 +2950,7 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
                       ( 0/*floating*/, anon_size + resvn_size, &ok );
       if (ok) {
          resvn_start = anon_start + anon_size;
-         ok = VG_(am_create_reservation)( resvn_start, resvn_size, 
-                                          SmLower, anon_size );
+         ok = create_reservation(resvn_start, resvn_size, SmLower, anon_size);
       }
    }
 
@@ -3018,8 +3016,8 @@ SysRes VG_(am_resize_client_dataseg) ( Addr oldbrk, Addr newbrk )
    aspacem_assert(VG_IS_PAGE_ALIGNED(delta));
    
    Bool overflow;
-   if (! VG_(am_extend_into_adjacent_reservation_client)( aseg->start, delta,
-                                                          &overflow)) {
+   if (! extend_into_adjacent_reservation_client(aseg->start, delta,
+                                                 &overflow)) {
       if (overflow)
          return VG_(mk_SysRes_Error)(1);
       else
@@ -3056,8 +3054,7 @@ SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end, SizeT max_size,
 
    /* Create a shrinkable reservation followed by an anonymous
       segment.  Together these constitute a growdown stack. */
-   ok = VG_(am_create_reservation)( resvn_start, resvn_size,
-                                    SmUpper, anon_size );
+   ok = create_reservation(resvn_start, resvn_size, SmUpper, anon_size);
    if (ok)
       return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
 
@@ -3098,8 +3095,8 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
    VG_(debugLog)(1, "signals", 
                     "extending a stack base 0x%lx down by %lu\n",
                     anon_seg->start, udelta);
-   if (! VG_(am_extend_into_adjacent_reservation_client)
-       ( anon_seg->start, -(SSizeT)udelta, &overflow )) {
+   if (! extend_into_adjacent_reservation_client(anon_seg->start,
+                                                 -(SSizeT)udelta, &overflow)) {
       if (overflow)
          sres = VG_(mk_SysRes_Error)(1);
       else
