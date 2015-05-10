@@ -99,8 +99,7 @@ void ML_(guess_and_register_stack) (Addr sp, ThreadState* tst)
 }
 
 /* Returns True iff address range is something the client can
-   plausibly mess with: all of it is either already belongs to the
-   client or is free or a reservation. */
+   plausibly mess with. */
 
 Bool ML_(valid_client_addr)(Addr start, SizeT size, ThreadId tid,
                                    const HChar *syscallname)
@@ -110,8 +109,7 @@ Bool ML_(valid_client_addr)(Addr start, SizeT size, ThreadId tid,
    if (size == 0)
       return True;
 
-   ret = VG_(am_is_valid_for_client_or_free_or_resvn)
-            (start,size,VKI_PROT_NONE);
+   ret = VG_(am_is_allowed_for_client)(start, size, VKI_PROT_NONE);
 
    if (0)
       VG_(printf)("%s: test=%#lx-%#lx ret=%d\n",

@@ -1232,8 +1232,7 @@ Bool VG_(am_is_valid_for_client)( Addr start, SizeT len, UInt prot )
    be consider part of the client's addressable space.  It also
    considers reservations to be allowable, since from the client's
    point of view they don't exist. */
-Bool VG_(am_is_valid_for_client_or_free_or_resvn)
-   ( Addr start, SizeT len, UInt prot )
+Bool VG_(am_is_allowed_for_client)( Addr start, SizeT len, UInt prot )
 {
    const UInt kinds = SkFileC | SkAnonC | SkShmC | SkFree | SkResvn;
 
@@ -2616,8 +2615,7 @@ SysRes am_munmap_both_wrk ( /*OUT*/Bool* need_discard,
    aspacem_assert(VG_IS_PAGE_ALIGNED(len));
 
    if (forClient) {
-      if (!VG_(am_is_valid_for_client_or_free_or_resvn)
-            ( start, len, VKI_PROT_NONE ))
+      if (!VG_(am_is_allowed_for_client)( start, len, VKI_PROT_NONE ))
          goto eINVAL;
    } else {
       if (!VG_(am_is_valid_for_valgrind)

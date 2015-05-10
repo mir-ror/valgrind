@@ -70,8 +70,7 @@ extern Bool VG_(am_is_valid_for_aspacem_minAddr)( Addr addr,
 // Querying current status
 
 
-/* Find the next segment along from 'here', if it is a file/anon/resvn
-   segment. */
+/* Find the next non-free segment along from 'here'. */
 extern NSegment const* VG_(am_next_nsegment) ( const NSegment* here,
                                                Bool fwds );
 
@@ -81,15 +80,13 @@ extern NSegment const* VG_(am_next_nsegment) ( const NSegment* here,
    VKI_PROT_NONE as 'prot'.  Will return False if any part of the
    area does not belong to valgrind or does not have at least
    the stated permissions. */
-extern Bool VG_(am_is_valid_for_valgrind)
-   ( Addr start, SizeT len, UInt prot );
+extern Bool VG_(am_is_valid_for_valgrind)( Addr start, SizeT len, UInt prot );
 
-/* Variant of VG_(am_is_valid_for_client) which allows free areas to
-   be consider part of the client's addressable space.  It also
+/* Variant of VG_(am_is_valid_for_valgrind) which allows free areas to
+   be considered part of the client's addressable space.  It also
    considers reservations to be allowable, since from the client's
    point of view they don't exist. */
-extern Bool VG_(am_is_valid_for_client_or_free_or_resvn)
-   ( Addr start, SizeT len, UInt prot );
+extern Bool VG_(am_is_allowed_for_client)( Addr start, SizeT len, UInt prot );
 
 /* Check whether ADDR looks like an address or address-to-be located in an
    extensible client stack segment. */
