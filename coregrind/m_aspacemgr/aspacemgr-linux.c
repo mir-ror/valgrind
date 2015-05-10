@@ -1221,8 +1221,7 @@ Bool is_valid_for( UInt kinds, Addr start, SizeT len, UInt prot )
 /* Test if a piece of memory is addressable by the client with at
    least the "prot" protection permissions by examining the underlying
    segments. */
-Bool VG_(am_is_valid_for_client)( Addr start, SizeT len, 
-                                  UInt prot )
+Bool VG_(am_is_valid_for_client)( Addr start, SizeT len, UInt prot )
 {
    const UInt kinds = SkFileC | SkAnonC | SkShmC;
 
