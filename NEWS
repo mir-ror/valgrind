@@ -87,6 +87,7 @@ where XXXXXX is the bug number as listed below.
 339288  support Cavium Octeon MIPS specific BBIT*32 instructions
 339442  Fix testsuite build failure on OS X 10.9
 339542  Enable compilation with Intel's ICC compiler
+339636  Use fxsave64 and fxrstor64 mnemonics instead of old-school rex64 prefix 
 339688  Mac-specific ASM does not support .version directive (cpuid,
         tronical and pushfpopf tests)
 339745  Valgrind crash when check Marmalade app (partial fix)
@@ -170,6 +171,9 @@ where XXXXXX is the bug number as listed below.
 346487  Compiler generates "note" about a future ABI change for PPC64
 346801  Fix link error on OS X: _vgModuleLocal_sf_maybe_extend_stack
 347151  Fix suppression for pthread_rwlock_init on OS X 10.8
+347379  valgrind --leak-check=full memleak errors from system libraries on OS X 10.8
+        == 217236
+347389  unhandled syscall: 373 (Linux ARM syncfs)
 n-i-bz  Provide implementations of certain compiler builtins to support
         compilers who may not provide those
 n-i-bz  Old STABS code is still being compiled, but never used. Remove it.
