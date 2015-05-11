@@ -3631,49 +3631,51 @@ PRE(sys_mprotect)
       /* Deal with mprotects on growable stack areas.
 
          The critical files to understand all this are mm/mprotect.c
-         in the kernel and sysdeps/unix/sysv/linux/dl-execstack.c in
-         glibc.
+         in the kernel and sysdeps/unix/sysv/linux/dl-execstack.c and 
+         elf/dl-load.c in glibc.
 
          The kernel provides PROT_GROWSDOWN and PROT_GROWSUP which
          round the start/end address of mprotect to the start/end of
-         the underlying vma and glibc uses that as an easy way to
-         change the protection of the stack by calling mprotect on the
-         last page of the stack with PROT_GROWSDOWN set.
+         the underlying vma. Older versions of glibc (e.g. 2.12.1) use that
+         as an easy way to change the protection of the stack by calling
+         mprotect on the last page of the stack with PROT_GROWSDOWN set.
+         Newer versions (e.g. 2.19) no longer appear to be using this trick.
 
-         The sanity check provided by the kernel is that the vma must
-         have the VM_GROWSDOWN/VM_GROWSUP flag set as appropriate.  */
+         We can only encounter PROT_GROWSUP on platforms where the stack
+         grows towards higher addresses. Here is the snippet from dl-load.c:
+
+            int __stack_prot attribute_hidden attribute_relro
+            #if _STACK_GROWS_DOWN && defined PROT_GROWSDOWN
+              = PROT_GROWSDOWN;
+            #elif _STACK_GROWS_UP && defined PROT_GROWSUP
+              = PROT_GROWSUP;
+            #else
+              = 0;
+            #endif
+
+         And _STACK_GROWS_DOWN is true for all platforms we support.
+         Besides, there is no support for GROWS_UP sdtacks anywhere in
+         valgrind.
+      */
       UInt grows = ARG3 & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP);
+
+      vg_assert(grows == VKI_PROT_GROWSDOWN);
+
       NSegment const *aseg = VG_(am_find_nsegment)(ARG1);
       NSegment const *rseg;
 
       vg_assert(aseg);
 
-      if (grows == VKI_PROT_GROWSDOWN) {
-         rseg = VG_(am_next_nsegment)( aseg, False/*backwards*/ );
-         if (rseg &&
-             rseg->kind == SkResvn &&
-             rseg->smode == SmUpper &&
-             rseg->end+1 == aseg->start) {
-            Addr end = ARG1 + ARG2;
-            ARG1 = aseg->start;
-            ARG2 = end - aseg->start;
-            ARG3 &= ~VKI_PROT_GROWSDOWN;
-         } else {
-            SET_STATUS_Failure( VKI_EINVAL );
-         }
-      } else if (grows == VKI_PROT_GROWSUP) {
-         rseg = VG_(am_next_nsegment)( aseg, True/*forwards*/ );
-         if (rseg &&
-             rseg->kind == SkResvn &&
-             rseg->smode == SmLower &&
-             aseg->end+1 == rseg->start) {
-            ARG2 = aseg->end - ARG1 + 1;
-            ARG3 &= ~VKI_PROT_GROWSUP;
-         } else {
-            SET_STATUS_Failure( VKI_EINVAL );
-         }
+      rseg = VG_(am_next_nsegment)( aseg, False/*backwards*/ );
+      if (rseg &&
+          rseg->kind == SkResvn &&
+          rseg->smode == SmUpper &&
+          rseg->end+1 == aseg->start) {
+         Addr end = ARG1 + ARG2;
+         ARG1 = aseg->start;
+         ARG2 = end - aseg->start;
+         ARG3 &= ~VKI_PROT_GROWSDOWN;
       } else {
-         /* both GROWSUP and GROWSDOWN */
          SET_STATUS_Failure( VKI_EINVAL );
       }
    }
