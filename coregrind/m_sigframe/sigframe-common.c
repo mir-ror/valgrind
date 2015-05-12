@@ -64,7 +64,7 @@ Bool ML_(sf_maybe_extend_stack) ( const ThreadState *tst, Addr addr,
       /* If the sigframe is allocated on an alternate stack, then we cannot
          extend that stack. Nothing to do here. */
       stackseg = VG_(am_find_nsegment)(addr);
-   } else if (VG_(am_addr_is_in_extensible_client_stack)(addr)) {
+   } else if (VG_(am_addr_is_in_extensible_client_stack)(addr, '*')) {
       if (VG_(extend_stack)(tid, addr)) {
          stackseg = VG_(am_find_nsegment)(addr);
          if (0 && stackseg)

@@ -1736,7 +1736,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
          if (tid == 1) {           // main thread
             Addr esp  = VG_(get_SP)(tid);
             Addr base = VG_PGROUNDDN(esp - VG_STACK_REDZONE_SZB);
-            if (VG_(am_addr_is_in_extensible_client_stack)(base) &&
+            if (VG_(am_addr_is_in_extensible_client_stack)(base, '*') &&
                 VG_(extend_stack)(tid, base)) {
                if (VG_(clo_trace_signals))
                   VG_(dmsg)("       -> extended stack base to %#lx\n",
@@ -2407,7 +2407,7 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
 {
    Addr fault;
    Addr esp;
-   NSegment const *seg, *seg_next;
+   NSegment const *seg;
 
    if (info->si_signo != VKI_SIGSEGV)
       return False;
@@ -2415,8 +2415,6 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
    fault    = (Addr)info->VKI_SIGINFO_si_addr;
    esp      = VG_(get_SP)(tid);
    seg      = VG_(am_find_nsegment)(fault);
-   seg_next = seg ? VG_(am_next_nsegment)( seg, True/*fwds*/ )
-                  : NULL;
 
    if (VG_(clo_trace_signals)) {
       if (seg == NULL)
@@ -2430,11 +2428,7 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
    }
 
    if (info->si_code == VKI_SEGV_MAPERR
-       && seg
-       && seg->kind == SkResvn
-       && seg->smode == SmUpper
-       && seg_next
-       && seg_next->kind == SkAnonC
+       && VG_(am_addr_is_in_extensible_client_stack)(fault, 'U')
        && fault >= fault_mask(esp - VG_STACK_REDZONE_SZB)) {
       /* If the fault address is above esp but below the current known
          stack segment base, and it was a fault because there was
@@ -2442,7 +2436,7 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
          then extend the stack segment. 
        */
       Addr base = VG_PGROUNDDN(esp - VG_STACK_REDZONE_SZB);
-      if (VG_(am_addr_is_in_extensible_client_stack)(base) &&
+      if (VG_(am_addr_is_in_extensible_client_stack)(base, '*') &&
           VG_(extend_stack)(tid, base)) {
          if (VG_(clo_trace_signals))
             VG_(dmsg)("       -> extended stack base to %#lx\n",

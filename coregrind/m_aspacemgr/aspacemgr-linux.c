@@ -1271,8 +1271,13 @@ static Bool any_Ts_in_range ( Addr start, SizeT len )
    extensible client stack segment. Return true if 
    (1) ADDR is located in an already mapped stack segment, OR
    (2) ADDR is located in a reservation segment into which an abutting SkAnonC
-       segment can be extended. */
-Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr )
+       segment can be extended.
+   The KIND parameter tells what kind of ADDR is allowed:
+   'M' ADDR must be mapped
+   'U' ADDR must be unmapped
+   '*' ADDR can be mapped or unmapped
+*/
+Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind )
 {
    const NSegment *seg = nsegments + find_nsegment_idx(addr);
 
@@ -1285,6 +1290,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr )
       return False;
 
    case SkResvn: {
+      if (kind == 'M') return False;
       if (seg->smode != SmUpper) return False;
       /* If the the abutting segment towards higher addresses is an SkAnonC
          segment, then ADDR is a future stack pointer. */
@@ -1298,6 +1304,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr )
    case SkAnonC: {
       /* If the abutting segment towards lower addresses is an SkResvn
          segment, then ADDR is a stack pointer into mapped memory. */
+      if (kind == 'U') return False;
       const NSegment *next = VG_(am_next_nsegment)(seg, /*forward*/ False);
       if (next == NULL || next->kind != SkResvn || next->smode != SmUpper)
          return False;

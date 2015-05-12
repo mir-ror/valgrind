@@ -3661,16 +3661,8 @@ PRE(sys_mprotect)
 
       vg_assert(grows == VKI_PROT_GROWSDOWN);
 
-      NSegment const *aseg = VG_(am_find_nsegment)(ARG1);
-      NSegment const *rseg;
-
-      vg_assert(aseg);
-
-      rseg = VG_(am_next_nsegment)( aseg, False/*backwards*/ );
-      if (rseg &&
-          rseg->kind == SkResvn &&
-          rseg->smode == SmUpper &&
-          rseg->end+1 == aseg->start) {
+      if (VG_(am_addr_is_in_extensible_client_stack)(ARG1, 'M')) {
+         const NSegment *aseg = VG_(am_find_nsegment)(ARG1);
          Addr end = ARG1 + ARG2;
          ARG1 = aseg->start;
          ARG2 = end - aseg->start;
