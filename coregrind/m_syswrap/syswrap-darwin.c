@@ -5774,7 +5774,7 @@ PRE(task_policy_set)
 
    Request *req = (Request *)ARG1;
 
-   PRINT("task_policy_set(%s) flacor:%d", name_for_port(MACH_REMOTE), req->flavor);
+   PRINT("task_policy_set(%s) flavor:%d", name_for_port(MACH_REMOTE), req->flavor);
 
    AFTER = POST_FN(task_policy_set);
 }
@@ -5866,6 +5866,44 @@ POST(mach_ports_lookup)
 #pragma pack()
 
     // Reply *reply = (Reply *)ARG1;
+}
+
+
+PRE(task_info)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        task_flavor_t flavor;
+        mach_msg_type_number_t task_info_outCnt;
+    } Request;
+#pragma pack()
+    
+    Request *req = (Request *)ARG1;
+    
+    PRINT("task_info(%s) flavor:%d", name_for_port(MACH_REMOTE), req->flavor);
+    
+    AFTER = POST_FN(task_info);
+}
+
+POST(task_info)
+{
+#pragma pack(4)
+    typedef struct {
+        mach_msg_header_t Head;
+        NDR_record_t NDR;
+        kern_return_t RetCode;
+        mach_msg_type_number_t task_info_outCnt;
+        integer_t task_info_out[52];
+    } Reply;
+#pragma pack()
+    
+    Reply *reply = (Reply *)ARG1;
+    if (!reply->RetCode) {
+    } else {
+        PRINT("mig return %d", reply->RetCode);
+    }
 }
 
 
@@ -7756,6 +7794,10 @@ PRE(mach_msg_task)
       return;
    case 3404:
       CALL_PRE(mach_ports_lookup);
+      return;
+
+   case 3405:
+      CALL_PRE(task_info);
       return;
 
    case 3407:
