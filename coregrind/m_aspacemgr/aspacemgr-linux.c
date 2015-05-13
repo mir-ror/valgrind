@@ -1124,33 +1124,21 @@ NSegment const * VG_(am_find_nsegment) ( Addr a )
 }
 
 
-/* Map segment pointer to segment index. */
-static Int segAddr_to_index ( const NSegment* seg )
-{
-   aspacem_assert(seg >= &nsegments[0] && seg < &nsegments[nsegments_used]);
-
-   return seg - &nsegments[0];
-}
-
-
 /* Find the next segment along from 'here', if it is a non-SkFree segment. */
 NSegment const * VG_(am_next_nsegment) ( const NSegment* here, Bool fwds )
 {
-   Int i = segAddr_to_index(here);
+   const NSegment *next;
 
    if (fwds) {
-      i++;
-      if (i >= nsegments_used)
+      next = here + 1;
+      if (next >= nsegments + nsegments_used)
          return NULL;
    } else {
-      i--;
-      if (i < 0)
+      if (here == nsegments)
          return NULL;
+      next = here - 1;
    }
-   if (nsegments[i].kind == SkFree) 
-      return NULL;
-   else
-      return &nsegments[i];
+   return (next->kind == SkFree) ? NULL : next;
 }
 
 
