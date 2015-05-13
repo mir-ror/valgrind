@@ -1629,7 +1629,7 @@ static void scan_memory_root_set(Addr searched, SizeT szB)
                 seg->kind == SkShmC);
 
       if (!(seg->hasR && seg->hasW))                    continue;
-      if (seg->isCH)                                    continue;
+      if (seg->whatsit == WiClientHeap)                 continue;
 
       // Don't poke around in device segments as this may cause
       // hangs.  Include /dev/zero just in case someone allocated

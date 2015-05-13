@@ -264,10 +264,7 @@ void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai )
       const NSegment *seg = VG_(am_find_nsegment) (a);
 
       /* Special case to detect the brk data segment. */
-      if (seg != NULL
-          && seg->kind == SkAnonC
-          && VG_(brk_limit) >= seg->start
-          && VG_(brk_limit) <= seg->end+1) {
+      if (seg != NULL && seg->whatsit == WiClientBreak) {
          /* Address a is in a Anon Client segment which contains
             VG_(brk_limit). So, this segment is the brk data segment
             as initimg-linux.c:setup_client_dataseg maps an anonymous

@@ -59,6 +59,17 @@ typedef
    }
    ShrinkMode;
 
+/* Describes what this segment is being part of. Encoding was chosen
+   to simplify printing. */
+typedef
+   enum {
+      WiClientHeap  = 'H',   // SkAnonC ONLY
+      WiClientStack = 'S',   // SkAnonC and SkResvn ONLY
+      WiClientBreak = 'B',   // SkAnonC and SkResvn ONLY
+      WiUnknown     = '-'
+   }
+   WhatsIt;
+
 /* Describes a segment.  Invariants:
 
      kind == SkFree:
@@ -111,7 +122,8 @@ typedef
       Bool    hasX;
       Bool    hasT;     // True --> translations have (or MAY have)
                         // been taken from this segment
-      Bool    isCH;     // True --> is client heap (SkAnonC ONLY)
+      /* Identifies what this segment is part of */
+      WhatsIt whatsit;
    }
    NSegment;
 

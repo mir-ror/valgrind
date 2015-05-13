@@ -436,7 +436,7 @@ static void show_nsegment_full ( Int logLevel, Int segNo, const NSegment* seg )
       (ULong)seg->start, (ULong)seg->end, len_buf,
       seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
       seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-',
-      seg->isCH ? 'H' : '-',
+      seg->whatsit,
       show_ShrinkMode(seg->smode),
       seg->dev, seg->ino, seg->offset,
       ML_(am_segname_get_seqnr)(seg->fnIdx), seg->fnIdx,
@@ -471,7 +471,7 @@ static void show_nsegment ( Int logLevel, Int segNo, const NSegment* seg )
             (ULong)seg->start, (ULong)seg->end, len_buf,
             seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
             seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-',
-            seg->isCH ? 'H' : '-'
+            seg->whatsit
          );
          break;
 
@@ -484,7 +484,7 @@ static void show_nsegment ( Int logLevel, Int segNo, const NSegment* seg )
             (ULong)seg->start, (ULong)seg->end, len_buf,
             seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
             seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-', 
-            seg->isCH ? 'H' : '-',
+            seg->whatsit,
             seg->dev, seg->ino, seg->offset,
             ML_(am_segname_get_seqnr)(seg->fnIdx), seg->fnIdx
          );
@@ -498,7 +498,7 @@ static void show_nsegment ( Int logLevel, Int segNo, const NSegment* seg )
             (ULong)seg->start, (ULong)seg->end, len_buf,
             seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
             seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-', 
-            seg->isCH ? 'H' : '-',
+            seg->whatsit,
             show_ShrinkMode(seg->smode)
          );
          break;
@@ -610,25 +610,26 @@ static Bool sane_NSegment ( const NSegment* s )
             s->smode == SmFixed
             && s->dev == 0 && s->ino == 0 && s->offset == 0 && s->fnIdx == -1 
             && !s->hasR && !s->hasW && !s->hasX && !s->hasT
-            && !s->isCH;
+            && s->whatsit == WiUnknown;
 
       case SkAnonC: case SkAnonV: case SkShmC:
          return 
             s->smode == SmFixed 
             && s->dev == 0 && s->ino == 0 && s->offset == 0 && s->fnIdx == -1
-            && (s->kind==SkAnonC ? True : !s->isCH);
+            && (s->kind==SkAnonC ? True : s->whatsit == WiUnknown);
 
       case SkFileC: case SkFileV:
          return 
             s->smode == SmFixed
             && ML_(am_sane_segname)(s->fnIdx)
-            && !s->isCH;
+            && s->whatsit == WiUnknown;
 
       case SkResvn: 
          return 
             s->dev == 0 && s->ino == 0 && s->offset == 0 && s->fnIdx == -1 
             && !s->hasR && !s->hasW && !s->hasX && !s->hasT
-            && !s->isCH;
+            && (s->whatsit == WiClientBreak || s->whatsit == WiClientStack ||
+                s->whatsit == WiUnknown);
 
       default:
          return False;
@@ -660,7 +661,7 @@ static Bool maybe_merge_nsegments ( NSegment* s1, const NSegment* s2 )
 
       case SkAnonC: case SkAnonV:
          if (s1->hasR == s2->hasR && s1->hasW == s2->hasW 
-             && s1->hasX == s2->hasX && s1->isCH == s2->isCH) {
+             && s1->hasX == s2->hasX && s1->whatsit == s2->whatsit) {
             s1->end = s2->end;
             s1->hasT |= s2->hasT;
             return True;
@@ -1452,7 +1453,8 @@ static void init_nsegment ( /*OUT*/NSegment* seg )
    seg->mode     = 0;
    seg->offset   = 0;
    seg->fnIdx    = -1;
-   seg->hasR = seg->hasW = seg->hasX = seg->hasT = seg->isCH = False;
+   seg->hasR = seg->hasW = seg->hasX = seg->hasT = False;
+   seg->whatsit = WiUnknown;
 }
 
 /* Make an NSegment which holds a reservation. */
@@ -2592,7 +2594,7 @@ SysRes VG_(am_mmap_client_heap) ( SizeT length, Int prot )
       Addr addr = sr_Res(res);
       Int ix = find_nsegment_idx(addr);
 
-      nsegments[ix].isCH = True;
+      nsegments[ix].whatsit = WiClientHeap;
    }
    return res;
 }
@@ -2735,8 +2737,8 @@ void VG_(am_set_segment_hasT)( Addr addr )
    falls entirely within a single free segment.  The returned Bool
    indicates whether the creation succeeded. */
 
-static Bool create_reservation (Addr start, SizeT length, 
-                                ShrinkMode smode, SSizeT extra)
+static Bool create_reservation (Addr start, SizeT length, ShrinkMode smode,
+                                SSizeT extra, WhatsIt whatsit)
 {
    Int      startI, endI;
    NSegment seg;
@@ -2780,6 +2782,8 @@ static Bool create_reservation (Addr start, SizeT length,
                            reservation. */
    seg.end   = end1;
    seg.smode = smode;
+   seg.whatsit = whatsit;
+   
    add_segment( &seg );
 
    AM_SANITY_CHECK;
@@ -2931,7 +2935,8 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
 
    /* Try to create the data seg and associated reservation where
       BASE says. */
-   ok = create_reservation(resvn_start, resvn_size, SmLower, anon_size);
+   ok = create_reservation(resvn_start, resvn_size, SmLower, anon_size,
+                           WiClientBreak);
 
    if (!ok) {
       /* Hmm, that didn't work.  Well, let aspacem suggest an address
@@ -2940,7 +2945,8 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
                       ( 0/*floating*/, anon_size + resvn_size, &ok );
       if (ok) {
          resvn_start = anon_start + anon_size;
-         ok = create_reservation(resvn_start, resvn_size, SmLower, anon_size);
+         ok = create_reservation(resvn_start, resvn_size, SmLower, anon_size,
+                                 WiClientBreak);
       }
    }
 
@@ -2949,7 +2955,12 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
    if (!ok)
       return VG_(mk_SysRes_Error)( VKI_ENOMEM );
 
-   return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
+   SysRes sres = VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
+   if (! sr_isError(sres)) {
+      NSegment *seg = nsegments + find_nsegment_idx(sr_Res(sres));
+      seg->whatsit = WiClientBreak;
+   }
+   return sres;
 }
 
 /* Resize the client brk segment from OLDBRK to NEWBRK. Return an error if
@@ -3044,9 +3055,16 @@ SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end, SizeT max_size,
 
    /* Create a shrinkable reservation followed by an anonymous
       segment.  Together these constitute a growdown stack. */
-   ok = create_reservation(resvn_start, resvn_size, SmUpper, anon_size);
-   if (ok)
-      return VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
+   ok = create_reservation(resvn_start, resvn_size, SmUpper, anon_size,
+                           WiClientStack);
+   if (ok) {
+      SysRes sres = VG_(am_mmap_anon_fixed_client)(anon_start, anon_size, prot);
+      if (! sr_isError(sres)) {
+         NSegment *seg = nsegments + find_nsegment_idx(sr_Res(sres));
+         seg->whatsit = WiClientStack;
+      }
+      return sres;
+   }
 
    return VG_(mk_SysRes_Error)( VKI_ENOMEM );
 }
@@ -3066,11 +3084,9 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
    const NSegment *seg = VG_(am_find_nsegment)(addr);
    aspacem_assert(seg != NULL);
 
-   /* TODO: the test "seg->kind == SkAnonC" is really inadequate,
-      because although it tests whether the segment is mapped
-      _somehow_, it doesn't check that it has the right permissions
-      (r,w, maybe x) ?  */
    if (seg->kind == SkAnonC) {
+      /* Ought to be the extensible stack segment */
+      aspacem_assert(seg->whatsit == WiClientStack);
       /* ADDR is already mapped.  Nothing to do. */
       *new_stack_base = seg->start;   // not really "new" :)
       return sres;
