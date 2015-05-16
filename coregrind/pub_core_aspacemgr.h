@@ -92,6 +92,11 @@ extern Bool VG_(am_is_allowed_for_client)( Addr start, SizeT len, UInt prot );
    extensible client stack segment. */
 extern Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind );
 
+/* If ADDR is located in a segment that looks like a stack segment, return
+   the start and end addresses of that segment. */
+extern Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start,
+                                  /*OUT*/Addr *end );
+
 /* Trivial fn: return the total amount of space in anonymous mappings,
    both for V and the client.  Is used for printing stats in
    out-of-memory messages. */

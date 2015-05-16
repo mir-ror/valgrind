@@ -1307,6 +1307,48 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind )
    }
 }
 
+
+/* If ADDR is located in a stack segment return True and set return via
+   START and END the address limits of that segment. Otherwise, return
+   False and set the limts to 0. */
+Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start, /*OUT*/Addr *end )
+{
+   const NSegment *seg = nsegments + find_nsegment_idx(addr);
+
+   switch (seg->kind) {
+   case SkFree:
+      goto bad;
+
+   case SkAnonC:
+   case SkFileC:
+   case SkShmC:
+   case SkAnonV:
+   case SkFileV:
+      if (!seg->hasR || !seg->hasW) goto bad;
+      *start = seg->start;
+      *end = seg->end;
+      return True;
+
+   case SkResvn:
+      /* If ADDR is an unmapped address in an extensible client stack
+         then this is OK. */
+      if (seg->smode != SmUpper) goto bad;
+      *start = seg->start;
+      seg = VG_(am_next_nsegment)(seg, /*forward*/ True);
+      if (!seg || seg->kind != SkAnonC || !seg->hasR || !seg->hasW) goto bad;
+      *end = seg->end;
+      return True;
+
+   default:
+      aspacem_assert(0);
+   }
+
+ bad:
+   *start = *end = 0;
+   return False;
+}
+
+
 /*-----------------------------------------------------------------*/
 /*---                                                           ---*/
 /*--- Modifying the segment array, and constructing segments.   ---*/

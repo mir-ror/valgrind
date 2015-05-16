@@ -270,73 +270,43 @@ void VG_(change_stack)(UWord id, Addr start, Addr end)
 void VG_(stack_limits)(Addr SP, Addr *start, Addr *end )
 {
    Stack* stack = find_stack_by_addr(SP);
-   NSegment const *stackseg = VG_(am_find_nsegment) (SP);
 
    if (LIKELY(stack)) {
       *start = stack->start;
       *end = stack->end;
    }
 
-   /* SP is assumed to be in a RW segment or in the SkResvn segment of an
-      extensible stack (normally, only the main thread has an extensible
-      stack segment).
+   /* SP is assumed to be in a stack segment. 
       If no such segment is found, assume we have no valid
       stack for SP, and set *start and *end to 0.
       Otherwise, possibly reduce the stack limits using the boundaries of
-      the RW segment/SkResvn segments containing SP. */
-   if (UNLIKELY(stackseg == NULL)) {
+      the stack segment containing SP. */
+   Addr stackseg_start, stackseg_end;
+   if (UNLIKELY(! VG_(am_stack_limits)(SP, &stackseg_start, &stackseg_end))) {
       VG_(debugLog)(2, "stacks", 
-                    "no addressable segment for SP %p\n", 
-                    (void*)SP);
+                    "SP %p is not located in a stack segment or stack segment "
+                    "has wrong permissions\n", (void*)SP);
       *start = 0;
       *end = 0;
       return;
    } 
 
-   if (UNLIKELY((!stackseg->hasR || !stackseg->hasW)
-                && (stackseg->kind != SkResvn || stackseg->smode != SmUpper))) {
-      VG_(debugLog)(2, "stacks", 
-                    "segment for SP %p is not RW or not a SmUpper Resvn\n",
-                    (void*)SP);
-      *start = 0;
-      *end = 0;
-      return;
-   } 
-
-   /* SP is in a RW segment, or in the SkResvn of an extensible stack.
-      We can use the seg start as the stack start limit. */
-   if (UNLIKELY(*start < stackseg->start)) {
+   /* SP is located in a stack segment */
+   if (UNLIKELY(*start < stackseg_start)) {
       VG_(debugLog)(2, "stacks", 
                     "segment for SP %p changed stack start limit"
                     " from %p to %p\n",
-                    (void*)SP, (void*)*start, (void*)stackseg->start);
-      *start = stackseg->start;
-   }
-
-   /* Now, determine the stack end limit. If the stackseg is SkResvn,
-      we need to get the neighbour segment (towards higher addresses).
-      This segment must be anonymous and RW. */
-   if (UNLIKELY(stackseg->kind == SkResvn)) {
-      stackseg = VG_(am_next_nsegment)(stackseg, /*forward*/ True);
-      if (!stackseg || !stackseg->hasR || !stackseg->hasW
-          || stackseg->kind != SkAnonC) {
-         VG_(debugLog)(2, "stacks", 
-                       "Next forward segment for SP %p Resvn segment"
-                       " is not RW or not AnonC\n",
-                       (void*)SP);
-         *start = 0;
-         *end = 0;
-         return;
-      }
+                    (void*)SP, (void*)*start, (void*)stackseg_start);
+      *start = stackseg_start;
    }
 
    /* Limit the stack end limit, using the found segment. */
-   if (UNLIKELY(*end > stackseg->end)) {
+   if (UNLIKELY(*end > stackseg_end)) {
       VG_(debugLog)(2, "stacks", 
                     "segment for SP %p changed stack end limit"
                     " from %p to %p\n",
-                    (void*)SP, (void*)*end, (void*)stackseg->end);
-      *end = stackseg->end;
+                    (void*)SP, (void*)*end, (void*)stackseg_end);
+      *end = stackseg_end;
    }
 
    /* If reducing start and/or end to the SP segment gives an
