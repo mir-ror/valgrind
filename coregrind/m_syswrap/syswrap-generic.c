@@ -3662,7 +3662,7 @@ PRE(sys_mprotect)
 
       vg_assert(grows == VKI_PROT_GROWSDOWN);
 
-      if (VG_(am_addr_is_in_extensible_client_stack)(ARG1, 'M')) {
+      if (VG_(am_addr_is_in_extensible_client_stack)(ARG1, MkMapped)) {
          const NSegment *aseg = VG_(am_find_nsegment)(ARG1);
          Addr end = ARG1 + ARG2;
          ARG1 = aseg->start;

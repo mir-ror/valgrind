@@ -1736,7 +1736,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
          if (tid == 1) {           // main thread
             Addr esp  = VG_(get_SP)(tid);
             Addr base = VG_PGROUNDDN(esp - VG_STACK_REDZONE_SZB);
-            if (VG_(am_addr_is_in_extensible_client_stack)(base, '*') &&
+            if (VG_(am_addr_is_in_extensible_client_stack)(base, MkAny) &&
                 VG_(extend_stack)(tid, base)) {
                if (VG_(clo_trace_signals))
                   VG_(dmsg)("       -> extended stack base to %#lx\n",
@@ -2428,7 +2428,7 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
    }
 
    if (info->si_code == VKI_SEGV_MAPERR
-       && VG_(am_addr_is_in_extensible_client_stack)(fault, 'U')
+       && VG_(am_addr_is_in_extensible_client_stack)(fault, MkUnmapped)
        && fault >= fault_mask(esp - VG_STACK_REDZONE_SZB)) {
       /* If the fault address is above esp but below the current known
          stack segment base, and it was a fault because there was
@@ -2436,7 +2436,7 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
          then extend the stack segment. 
        */
       Addr base = VG_PGROUNDDN(esp - VG_STACK_REDZONE_SZB);
-      if (VG_(am_addr_is_in_extensible_client_stack)(base, '*') &&
+      if (VG_(am_addr_is_in_extensible_client_stack)(base, MkAny) &&
           VG_(extend_stack)(tid, base)) {
          if (VG_(clo_trace_signals))
             VG_(dmsg)("       -> extended stack base to %#lx\n",

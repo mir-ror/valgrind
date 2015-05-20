@@ -47,6 +47,13 @@
 /* types SegKind, ShrinkMode and NSegment are described in
    the tool-visible header file, not here. */
 
+/* Describes whether an address is mapped or unmapped/ */
+typedef
+   enum {
+      MkMapped   = 0x1,
+      MkUnmapped = 0x2,
+      MkAny      = MkMapped | MkUnmapped
+   } MapKind;
 
 //--------------------------------------------------------------
 // Initialisation
@@ -90,7 +97,8 @@ extern Bool VG_(am_is_allowed_for_client)( Addr start, SizeT len, UInt prot );
 
 /* Check whether ADDR looks like an address or address-to-be located in an
    extensible client stack segment. */
-extern Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind );
+extern Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr,
+                                                        MapKind kind );
 
 /* If ADDR is located in a segment that looks like a stack segment, return
    the start and end addresses of that segment. */

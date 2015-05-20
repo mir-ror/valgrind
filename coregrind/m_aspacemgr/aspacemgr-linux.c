@@ -1266,7 +1266,7 @@ static Bool any_Ts_in_range ( Addr start, SizeT len )
    'U' ADDR must be unmapped
    '*' ADDR can be mapped or unmapped
 */
-Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind )
+Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
 {
    const NSegment *seg = nsegments + find_nsegment_idx(addr);
 
@@ -1279,7 +1279,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind )
       return False;
 
    case SkResvn: {
-      if (kind == 'M') return False;
+      if (kind == MkMapped) return False;
       if (seg->smode != SmUpper) return False;
       /* If the the abutting segment towards higher addresses is an SkAnonC
          segment, then ADDR is a future stack pointer. */
@@ -1293,7 +1293,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, HChar kind )
    case SkAnonC: {
       /* If the abutting segment towards lower addresses is an SkResvn
          segment, then ADDR is a stack pointer into mapped memory. */
-      if (kind == 'U') return False;
+      if (kind == MkUnmapped) return False;
       const NSegment *next = VG_(am_next_nsegment)(seg, /*forward*/ False);
       if (next == NULL || next->kind != SkResvn || next->smode != SmUpper)
          return False;
