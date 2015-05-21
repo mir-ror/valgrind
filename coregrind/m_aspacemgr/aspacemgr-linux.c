@@ -2125,9 +2125,6 @@ Bool VG_(am_notify_mprotect)( Addr start, SizeT len, UInt prot )
 
    split_nsegments_lo_and_hi( start, start+len-1, &iLo, &iHi );
 
-   iLo = find_nsegment_idx(start);
-   iHi = find_nsegment_idx(start + len - 1);
-
    for (i = iLo; i <= iHi; i++) {
       /* Apply the permissions to all relevant segments. */
       switch (nsegments[i].kind) {
