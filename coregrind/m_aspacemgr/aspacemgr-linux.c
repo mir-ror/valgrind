@@ -332,7 +332,7 @@ static Addr aspacem_vStart = 0;
 
 /* ------ Forwards decls ------ */
 inline
-static Int  find_nsegment_idx ( Addr a );
+static UInt find_nsegment_idx ( Addr a );
 
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
@@ -770,7 +770,7 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
                                           ULong dev, ULong ino, Off64T offset, 
                                           const HChar* filename )
 {
-   Int  iLo, iHi, i;
+   UInt iLo, iHi, i;
    Bool sloppyXcheck, sloppyRcheck;
 
    /* If a problem has already been detected, don't continue comparing
@@ -790,9 +790,6 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
    iLo = find_nsegment_idx( addr );
    iHi = find_nsegment_idx( addr + len - 1 );
 
-   /* These 5 should be guaranteed by find_nsegment_idx. */
-   aspacem_assert(0 <= iLo && iLo < nsegments_used);
-   aspacem_assert(0 <= iHi && iHi < nsegments_used);
    aspacem_assert(iLo <= iHi);
    aspacem_assert(nsegments[iLo].start <= addr );
    aspacem_assert(nsegments[iHi].end   >= addr + len - 1 );
@@ -922,7 +919,7 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
 
 static void sync_check_gap_callback ( Addr addr, SizeT len )
 {
-   Int iLo, iHi, i;
+   UInt iLo, iHi, i;
 
    /* If a problem has already been detected, don't continue comparing
       segments, so as to avoid flooding the output with error
@@ -941,9 +938,6 @@ static void sync_check_gap_callback ( Addr addr, SizeT len )
    iLo = find_nsegment_idx( addr );
    iHi = find_nsegment_idx( addr + len - 1 );
 
-   /* These 5 should be guaranteed by find_nsegment_idx. */
-   aspacem_assert(0 <= iLo && iLo < nsegments_used);
-   aspacem_assert(0 <= iHi && iHi < nsegments_used);
    aspacem_assert(iLo <= iHi);
    aspacem_assert(nsegments[iLo].start <= addr );
    aspacem_assert(nsegments[iHi].end   >= addr + len - 1 );
@@ -1040,7 +1034,7 @@ void ML_(am_do_sanity_check)( void )
 */
 /* Don't call find_nsegment_idx_WRK; use find_nsegment_idx instead. */
 __attribute__((noinline))
-static Int find_nsegment_idx_WRK ( Addr a )
+static UInt find_nsegment_idx_WRK ( Addr a )
 {
    Addr a_mid_lo, a_mid_hi;
    Int  mid,
@@ -1064,7 +1058,7 @@ static Int find_nsegment_idx_WRK ( Addr a )
    }
 }
 
-inline static Int find_nsegment_idx ( Addr a )
+inline static UInt find_nsegment_idx ( Addr a )
 {
 #  define N_CACHE 131 /*prime*/
    static Addr cache_pageno[N_CACHE];
@@ -1099,12 +1093,13 @@ inline static Int find_nsegment_idx ( Addr a )
        && a <= nsegments[cache_segidx[ix]].end) {
       /* hit */
       /* aspacem_assert( cache_segidx[ix] == find_nsegment_idx_WRK(a) ); */
-      return cache_segidx[ix];
+   } else {
+      /* miss */
+      n_m++;
+      cache_segidx[ix] = find_nsegment_idx_WRK(a);
+      cache_pageno[ix] = a >> 12;
    }
-   /* miss */
-   n_m++;
-   cache_segidx[ix] = find_nsegment_idx_WRK(a);
-   cache_pageno[ix] = a >> 12;
+   aspacem_assert(cache_segidx[ix] >= 0 && cache_segidx[ix] < nsegments_used);
    return cache_segidx[ix];
 #  undef N_CACHE
 }
@@ -1113,8 +1108,8 @@ inline static Int find_nsegment_idx ( Addr a )
 /* Finds the segment containing 'a'.  Only returns non-SkFree segments. */
 NSegment const * VG_(am_find_nsegment) ( Addr a )
 {
-   Int i = find_nsegment_idx(a);
-   aspacem_assert(i >= 0 && i < nsegments_used);
+   UInt i = find_nsegment_idx(a);
+
    aspacem_assert(nsegments[i].start <= a);
    aspacem_assert(a <= nsegments[i].end);
    if (nsegments[i].kind == SkFree) 
@@ -1167,7 +1162,7 @@ ULong VG_(am_get_anonsize_total)( void )
 static
 Bool is_valid_for( UInt kinds, Addr start, SizeT len, UInt prot )
 {
-   Int  i, iLo, iHi;
+   UInt i, iLo, iHi;
    Bool needR, needW, needX;
 
    if (len == 0)
@@ -1243,7 +1238,7 @@ Bool VG_(am_is_valid_for_valgrind) ( Addr start, SizeT len, UInt prot )
 
 static Bool any_Ts_in_range ( Addr start, SizeT len )
 {
-   Int iLo, iHi, i;
+   UInt iLo, iHi, i;
    aspacem_assert(len > 0);
    aspacem_assert(start + len > start);
    iLo = find_nsegment_idx(start);
@@ -1361,13 +1356,13 @@ Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start, /*OUT*/Addr *end )
 
 static void split_nsegment_at ( Addr a )
 {
-   Int i, j;
+   UInt i, j;
 
    aspacem_assert(a > 0);
    aspacem_assert(VG_IS_PAGE_ALIGNED(a));
+   aspacem_assert(nsegments_used > 0);
  
    i = find_nsegment_idx(a);
-   aspacem_assert(i >= 0 && i < nsegments_used);
 
    if (nsegments[i].start == a)
       /* 'a' is already the start point of a segment, so nothing to be
@@ -1403,8 +1398,8 @@ static void split_nsegment_at ( Addr a )
 
 static 
 void split_nsegments_lo_and_hi ( Addr sLo, Addr sHi,
-                                 /*OUT*/Int* iLo,
-                                 /*OUT*/Int* iHi )
+                                 /*OUT*/UInt* iLo,
+                                 /*OUT*/UInt* iHi )
 {
    aspacem_assert(sLo < sHi);
    aspacem_assert(VG_IS_PAGE_ALIGNED(sLo));
@@ -1417,8 +1412,7 @@ void split_nsegments_lo_and_hi ( Addr sLo, Addr sHi,
 
    *iLo = find_nsegment_idx(sLo);
    *iHi = find_nsegment_idx(sHi);
-   aspacem_assert(0 <= *iLo && *iLo < nsegments_used);
-   aspacem_assert(0 <= *iHi && *iHi < nsegments_used);
+
    aspacem_assert(*iLo <= *iHi);
    aspacem_assert(nsegments[*iLo].start == sLo);
    aspacem_assert(nsegments[*iHi].end == sHi);
@@ -1432,7 +1426,7 @@ void split_nsegments_lo_and_hi ( Addr sLo, Addr sHi,
 
 static void add_segment ( const NSegment* seg )
 {
-   Int  i, iLo, iHi, delta;
+   UInt i, iLo, iHi, delta;
    Bool segment_is_sane;
 
    Addr sStart = seg->start;
@@ -1456,7 +1450,7 @@ static void add_segment ( const NSegment* seg )
    for (i = iLo; i <= iHi; ++i)
       ML_(am_dec_refcount)(nsegments[i].fnIdx);
    delta = iHi - iLo;
-   aspacem_assert(delta >= 0);
+
    if (delta > 0) {
       for (i = iLo; i < nsegments_used-delta; i++)
          nsegments[i] = nsegments[i+delta];
@@ -1800,7 +1794,7 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
         it does not trash either any of its own mappings or any of 
         valgrind's mappings.
    */
-   Int  i, j;
+   UInt i, j;
    Addr holeStart, holeEnd, holeLen;
    Bool fixed_not_required;
 
@@ -1839,8 +1833,8 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
    /* ------ Implement Policy Exception #1 ------ */
 
    if (forClient && req->rkind == MFixed) {
-      Int  iLo   = find_nsegment_idx(reqStart);
-      Int  iHi   = find_nsegment_idx(reqEnd);
+      UInt iLo   = find_nsegment_idx(reqStart);
+      UInt iHi   = find_nsegment_idx(reqEnd);
       Bool allow = True;
       for (i = iLo; i <= iHi; i++) {
          if (nsegments[i].kind == SkFree
@@ -1867,8 +1861,8 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
    /* ------ Implement Policy Exception #2 ------ */
 
    if (forClient && req->rkind == MHint) {
-      Int  iLo   = find_nsegment_idx(reqStart);
-      Int  iHi   = find_nsegment_idx(reqEnd);
+      UInt iLo   = find_nsegment_idx(reqStart);
+      UInt iHi   = find_nsegment_idx(reqEnd);
       Bool allow = True;
       for (i = iLo; i <= iHi; i++) {
          if (nsegments[i].kind == SkFree
@@ -1997,8 +1991,8 @@ Addr VG_(am_get_advisory_client_simple) ( Addr start, SizeT len,
 /* Similar to VG_(am_find_nsegment) but only returns free segments. */
 static NSegment const * VG_(am_find_free_nsegment) ( Addr a )
 {
-   Int i = find_nsegment_idx(a);
-   aspacem_assert(i >= 0 && i < nsegments_used);
+   UInt i = find_nsegment_idx(a);
+
    aspacem_assert(nsegments[i].start <= a);
    aspacem_assert(a <= nsegments[i].end);
    if (nsegments[i].kind == SkFree) 
@@ -2107,7 +2101,7 @@ VG_(am_notify_client_shmat)( Addr a, SizeT len, UInt prot )
 
 Bool VG_(am_notify_mprotect)( Addr start, SizeT len, UInt prot )
 {
-   Int  i, iLo, iHi;
+   UInt i, iLo, iHi;
    Bool newR, newW, newX, needDiscard;
 
    aspacem_assert(VG_IS_PAGE_ALIGNED(start));
@@ -2619,7 +2613,7 @@ SysRes VG_(am_mmap_client_heap) ( SizeT length, Int prot )
 
    if (! sr_isError(res)) {
       Addr addr = sr_Res(res);
-      Int ix = find_nsegment_idx(addr);
+      UInt ix = find_nsegment_idx(addr);
 
       nsegments[ix].whatsit = WiClientHeap;
    }
@@ -2708,7 +2702,7 @@ SysRes VG_(am_munmap_valgrind)( Addr start, SizeT len )
 
 Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
 {
-   Int i, iLo, iHi;
+   UInt i, iLo, iHi;
 
    if (len == 0)
       return True;
@@ -2746,7 +2740,7 @@ Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
    expected to belong to a client segment. */
 void VG_(am_set_segment_hasT)( Addr addr )
 {
-   Int i = find_nsegment_idx(addr);
+   UInt i = find_nsegment_idx(addr);
    SegKind kind = nsegments[i].kind;
    aspacem_assert(kind == SkAnonC || kind == SkFileC || kind == SkShmC);
    nsegments[i].hasT = True;
@@ -2767,7 +2761,7 @@ void VG_(am_set_segment_hasT)( Addr addr )
 static Bool create_reservation (Addr start, SizeT length, ShrinkMode smode,
                                 SSizeT extra, WhatsIt whatsit)
 {
-   Int      startI, endI;
+   UInt     startI, endI;
    NSegment seg;
 
    /* start and end, not taking into account the extra space. */
@@ -2833,7 +2827,7 @@ static const NSegment *
 extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
                                          Bool *overflow)
 {
-   Int    segA, segR;
+   UInt   segA, segR;
    UInt   prot;
    SysRes sres;
 
@@ -2892,6 +2886,7 @@ extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
       /* Extending the segment backwards. */
       delta = -delta;
       aspacem_assert(delta > 0);
+      aspacem_assert(segA >= 1);
 
       segR = segA-1;
       if (segR < 0
@@ -3156,8 +3151,7 @@ const NSegment *VG_(am_extend_map_client)( Addr addr, SizeT delta )
       VG_(am_show_nsegments)(0, "VG_(am_extend_map_client) BEFORE");
 
    /* Get the client segment */
-   Int ix = find_nsegment_idx(addr);
-   aspacem_assert(ix >= 0 && ix < nsegments_used);
+   UInt ix = find_nsegment_idx(addr);
 
    NSegment *seg = nsegments + ix;
 
@@ -3214,7 +3208,7 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
                                         Addr old_addr, SizeT old_len,
                                         Addr new_addr, SizeT new_len )
 {
-   Int      iLo, iHi;
+   UInt     iLo, iHi;
    SysRes   sres;
    NSegment seg;
 
@@ -3708,7 +3702,7 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
       here.  If found, we just skip.  Otherwise add the data presented
       here into css_local[]. */
 
-   Int iLo, iHi, i;
+   UInt iLo, iHi, i;
 
    if (len == 0) return;
 
@@ -3792,7 +3786,7 @@ static void remove_mapping_callback(Addr addr, SizeT len)
 {
    // derived from sync_check_gap_callback()
 
-   Int iLo, iHi, i;
+   UInt iLo, iHi, i;
 
    if (len == 0)
       return;
