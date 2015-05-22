@@ -2639,11 +2639,12 @@ SysRes am_munmap_both_wrk ( /*OUT*/Bool* need_discard,
    Bool   d;
    SysRes sres;
 
+   *need_discard = False;
+
    if (!VG_IS_PAGE_ALIGNED(start))
       goto eINVAL;
 
    if (len == 0) {
-      *need_discard = False;
       return VG_(mk_SysRes_Success)( 0 );
    }
 
@@ -3221,6 +3222,8 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    UInt     iLo, iHi;
    SysRes   sres;
    NSegment seg;
+
+   *need_discard = False;
 
    if (old_len == 0 || new_len == 0)
       return False;
