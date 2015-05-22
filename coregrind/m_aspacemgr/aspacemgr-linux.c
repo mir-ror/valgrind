@@ -152,8 +152,8 @@
       or the client (C).
 
    SkAnonC: an anonymous mapping belonging to C.  For these, aspacem
-      tracks a boolean indicating whether or not is is part of the
-      client's heap area (can't remember why).
+      tracks a field indicating what kind of segment this is, conceptually:
+      heap, extensible stack, break segment (aka data segment).
 
    SkFileC: a file mapping belonging to C.
 
@@ -185,8 +185,8 @@
    purposes the rest of the system wants.  Currently they are used to
    reserve the expansion space into which a growdown stack is
    expanded, and into which the data segment is extended.  Note,
-   though, those uses are entirely external to this module, which only
-   supplies the primitives.
+   though, that reservation segments are an implementation detail that
+   should not be visible outside the address space manager.
 
    Reservations may be shrunk in order that an adjoining anonymous
    mapping may be extended.  This makes dataseg/stack expansion work.
