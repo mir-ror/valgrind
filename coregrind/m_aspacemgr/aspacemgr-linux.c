@@ -2141,24 +2141,12 @@ Bool VG_(am_notify_mprotect)( Addr start, SizeT len, UInt prot )
 }
 
 
-/* Notifies aspacem that an munmap completed successfully.  The
-   segment array is updated accordingly.  As with
-   VG_(am_notify_mprotect), we merely record the given info, and don't
-   check it for sensibleness.  If the returned Bool is True, the
-   caller should immediately discard translations from the specified
-   address range. */
-
-Bool VG_(am_notify_munmap)( Addr start, SizeT len )
+static void am_notify_munmap( Addr start, SizeT len )
 {
    NSegment seg;
-   Bool     needDiscard;
    aspacem_assert(VG_IS_PAGE_ALIGNED(start));
    aspacem_assert(VG_IS_PAGE_ALIGNED(len));
-
-   if (len == 0)
-      return False;
-
-   needDiscard = any_Ts_in_range( start, len );
+   aspacem_assert(len > 0);
 
    init_nsegment( &seg );
    seg.start = start;
@@ -2175,17 +2163,39 @@ Bool VG_(am_notify_munmap)( Addr start, SizeT len )
           aspacem_maxAddr < Addr_MAX)
       seg.kind = SkResvn;
    else 
-   /* Ditto for segments from below aspacem_minAddr. */
-   if (seg.end < aspacem_minAddr && aspacem_minAddr > 0)
-      seg.kind = SkResvn;
-   else
-      seg.kind = SkFree;
+      /* Ditto for segments from below aspacem_minAddr. */
+      if (seg.end < aspacem_minAddr && aspacem_minAddr >= Addr_MIN)
+         seg.kind = SkResvn;
+      else
+         seg.kind = SkFree;
 
    add_segment( &seg );
 
    /* Unmapping could create two adjacent free segments, so a preen is
       needed.  add_segment() will do that, so no need to here. */
    AM_SANITY_CHECK;
+}
+
+/* Notifies aspacem that an munmap completed successfully.  The
+   segment array is updated accordingly.  As with
+   VG_(am_notify_mprotect), we merely record the given info, and don't
+   check it for sensibleness.  If the returned Bool is True, the
+   caller should immediately discard translations from the specified
+   address range. */
+
+Bool VG_(am_notify_munmap)( Addr start, SizeT len )
+{
+   Bool     needDiscard;
+   aspacem_assert(VG_IS_PAGE_ALIGNED(start));
+   aspacem_assert(VG_IS_PAGE_ALIGNED(len));
+
+   if (len == 0)
+      return False;
+
+   needDiscard = any_Ts_in_range( start, len );
+
+   am_notify_munmap( start, len );
+
    return needDiscard;
 }
 
@@ -2659,8 +2669,8 @@ SysRes am_munmap_both_wrk ( /*OUT*/Bool* need_discard,
    if (sr_isError(sres))
       return sres;
 
-   VG_(am_notify_munmap)( start, len );
-   AM_SANITY_CHECK;
+   am_notify_munmap( start, len );
+
    *need_discard = d;
    return sres;
 
@@ -3261,21 +3271,8 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    add_segment( &seg );
 
    /* Create a free hole in the old location. */
-   init_nsegment( &seg );
-   seg.start = old_addr;
-   seg.end   = old_addr + old_len - 1;
-   /* See comments in VG_(am_notify_munmap) about this SkResvn vs
-      SkFree thing. */
-   if (old_addr > aspacem_maxAddr 
-       && /* check previous comparison is meaningful */
-          aspacem_maxAddr < Addr_MAX)
-      seg.kind = SkResvn;
-   else
-      seg.kind = SkFree;
+   am_notify_munmap( old_addr, old_len );
 
-   add_segment( &seg );
-
-   AM_SANITY_CHECK;
    return True;
 }
 
