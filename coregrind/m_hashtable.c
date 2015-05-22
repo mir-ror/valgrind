@@ -179,7 +179,7 @@ void* VG_(HT_gen_lookup) ( const VgHashTable *table, const void* node,
    VgHashNode* curr = table->chains[ CHAIN_NO(hnode->key, table) ]; // GEN!!!
 
    while (curr) {
-      if (cmp (hnode, curr) == 0) { // GEN!!!
+      if (hnode->key == curr->key && cmp (hnode, curr) == 0) { // GEN!!!
          return curr;
       }
       curr = curr->next;
@@ -222,7 +222,7 @@ void* VG_(HT_gen_remove) ( VgHashTable *table, const void* node, HT_Cmp_t cmp  )
    table->iterOK = False;
 
    while (curr) {
-      if (cmp(hnode, curr) == 0) { // GEN!!!
+      if (hnode->key == curr->key && cmp(hnode, curr) == 0) { // GEN!!!
          *prev_next_ptr = curr->next;
          table->n_elements--;
          return curr;
@@ -278,22 +278,18 @@ void VG_(HT_print_stats) ( const VgHashTable *table, HT_Cmp_t cmp )
          nelt = 0;
          // Is the same cnode element existing before cnode ?
          for (node = table->chains[i]; node != cnode; node = node->next) {
-            if (cmp) {
-               if ((*cmp)(node, cnode) == 0)
-                  nelt++;
-            } else 
-               if (node->key == cnode->key)
-                  nelt++;
+            if (node->key == cnode->key
+                && (cmp == NULL || cmp (node, cnode) == 0)) {
+               nelt++;
+            }
          }
          // If cnode element not in a previous node, count occurences of elt.
          if (nelt == 0) {
             for (node = cnode; node != NULL; node = node->next) {
-               if (cmp) {
-                  if ((*cmp)(node, cnode) == 0)
-                     nelt++;
-               } else 
-                  if (node->key == cnode->key)
-                     nelt++;
+               if (node->key == cnode->key
+                   && (cmp == NULL || cmp (node, cnode) == 0)) {
+                  nelt++;
+               }
             }
             INCOCCUR(elt_occurences, nelt);
          }

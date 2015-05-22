@@ -1101,6 +1101,8 @@ PRE(ioctl)
    switch (ARG2 /* request */) {
    case VKI_TIOCSCTTY:
    case VKI_TIOCEXCL:
+   case VKI_TIOCSBRK:
+   case VKI_TIOCCBRK:
    case VKI_TIOCPTYGRANT:
    case VKI_TIOCPTYUNLK:
    case VKI_DTRACEHIOC_REMOVE: 
@@ -1409,6 +1411,8 @@ POST(ioctl)
    case VKI_TIOCPTYGNAME:
        POST_MEM_WRITE( ARG3, 128);
        break;
+   case VKI_TIOCSBRK:           /* set break bit                 */
+   case VKI_TIOCCBRK:           /* clear break bit               */
    case VKI_TIOCPTYGRANT:
    case VKI_TIOCPTYUNLK:
        break;
@@ -3590,6 +3594,25 @@ POST(accept)
    SET_STATUS_from_SysRes(r);
 }
 
+PRE(mkfifo)
+{
+   *flags |= SfMayBlock;
+   PRINT("mkfifo ( %#lx(%s), %ld )",ARG1,(char *)ARG1,(vki_mode_t)ARG2);
+   PRE_REG_READ2(long, "mkfifo", const char *, path, vki_mode_t, mode);
+   PRE_MEM_RASCIIZ( "mkfifo(path)", ARG1 );
+}
+
+POST(mkfifo)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "mkfifo", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_with_given_name)(tid, RES, (Char*)ARG1);
+   }
+}
 
 PRE(sendto)
 {
@@ -9285,6 +9308,28 @@ POST(getattrlistbulk)
       POST_MEM_WRITE(ARG3, ARG4);
 }
 
+PRE(readlinkat)
+{
+    Word  saved = SYSNO;
+    
+    PRINT("readlinkat ( %ld, %#lx(%s), %#lx, %llu )", ARG1,ARG2,(char*)ARG2,ARG3,(ULong)ARG4);
+    PRE_REG_READ4(long, "readlinkat",
+                  int, dfd, const char *, path, char *, buf, int, bufsiz);
+    PRE_MEM_RASCIIZ( "readlinkat(path)", ARG2 );
+    PRE_MEM_WRITE( "readlinkat(buf)", ARG3,ARG4 );
+    
+    /*
+     * Refer to coregrind/m_syswrap/syswrap-linux.c
+     */
+    {
+        /* Normal case */
+        SET_STATUS_from_SysRes( VG_(do_syscall4)(saved, ARG1, ARG2, ARG3, ARG4));
+    }
+    
+    if (SUCCESS && RES > 0)
+        POST_MEM_WRITE( ARG3, RES );
+}
+
 PRE(bsdthread_ctl)
 {
    // int bsdthread_ctl(user_addr_t cmd, user_addr_t arg1, 
@@ -9391,7 +9436,11 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENXY(__NR_dup,         sys_dup), 
    MACXY(__NR_pipe,        pipe), 
    GENX_(__NR_getegid,     sys_getegid), 
-// _____(__NR_profil), 
+#if DARWIN_VERS >= DARWIN_10_7
+   _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(44)),    // old profil
+#else
+// _____(__NR_profil),
+#endif
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(45)),    // old ktrace
    MACXY(__NR_sigaction,   sigaction), 
    GENX_(__NR_getgid,      sys_getgid), 
@@ -9479,7 +9528,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(129)),   // old truncate
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(130)),   // old ftruncate
    GENX_(__NR_flock,       sys_flock), 
-// _____(__NR_mkfifo), 
+   MACXY(__NR_mkfifo,      mkfifo),
    MACX_(__NR_sendto,      sendto), 
    MACX_(__NR_shutdown,    shutdown), 
    MACXY(__NR_socketpair,  socketpair), 
@@ -9801,7 +9850,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_select_nocancel,   sys_select),
    GENX_(__NR_fsync_nocancel,    sys_fsync),
    MACX_(__NR_connect_nocancel,  connect),
-// _____(__NR_sigsuspend_nocancel),
+   MACX_(__NR_sigsuspend_nocancel, sigsuspend),
    GENXY(__NR_readv_nocancel,    sys_readv),
    GENX_(__NR_writev_nocancel,   sys_writev),
    MACX_(__NR_sendto_nocancel,   sendto),
@@ -9836,6 +9885,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACXY(__NR_sysctlbyname,        sysctlbyname),       // 274
    MACXY(__NR_necp_match_policy,   necp_match_policy),  // 460
    MACXY(__NR_getattrlistbulk,     getattrlistbulk),    // 461
+   MACX_(__NR_readlinkat,          readlinkat),         // 473
    MACX_(__NR_bsdthread_ctl,       bsdthread_ctl),      // 478
    MACX_(__NR_guarded_open_dprotected_np, guarded_open_dprotected_np),
    MACX_(__NR_guarded_write_np, guarded_write_np),

@@ -2143,7 +2143,7 @@ Bool VG_(am_notify_mprotect)( Addr start, SizeT len, UInt prot )
 
 /* Notifies aspacem that an munmap completed successfully.  The
    segment array is updated accordingly.  As with
-   VG_(am_notify_munmap), we merely record the given info, and don't
+   VG_(am_notify_mprotect), we merely record the given info, and don't
    check it for sensibleness.  If the returned Bool is True, the
    caller should immediately discard translations from the specified
    address range. */
@@ -3255,9 +3255,6 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    /* Mark the new area based on the old seg. */
    if (seg.kind == SkFileC) {
       seg.offset += ((ULong)old_addr) - ((ULong)seg.start);
-   } else {
-      aspacem_assert(seg.kind == SkAnonC);
-      aspacem_assert(seg.offset == 0);
    }
    seg.start = new_addr;
    seg.end   = new_addr + new_len - 1;

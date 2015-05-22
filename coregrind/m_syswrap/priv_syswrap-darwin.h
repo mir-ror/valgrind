@@ -189,7 +189,7 @@ DECL_TEMPLATE(darwin, getsockopt);              // 118
 // old truncate
 // old ftruncate
 // GEN flock 131
-// NYI mkfifo 132
+DECL_TEMPLATE(darwin, mkfifo);                  // 132
 DECL_TEMPLATE(darwin, sendto);                  // 133
 DECL_TEMPLATE(darwin, shutdown);                // 134
 DECL_TEMPLATE(darwin, socketpair);              // 135
@@ -547,7 +547,7 @@ DECL_TEMPLATE(darwin, getattrlistbulk);          // 461
 // NYI fstatat64       // 470
 // NYI linkat          // 471
 // NYI unlinkat        // 472
-// NYI readlinkat      // 473
+DECL_TEMPLATE(darwin, readlinkat);               // 473
 // NYI symlinkat       // 474
 // NYI mkdirat         // 475
 // NYI getattrlistat   // 476
