@@ -1358,7 +1358,7 @@ static void split_nsegment_at ( Addr a )
 {
    UInt i, j;
 
-   aspacem_assert(a > 0);
+   aspacem_assert(a > Addr_MIN);
    aspacem_assert(VG_IS_PAGE_ALIGNED(a));
    aspacem_assert(nsegments_used > 0);
  
@@ -1405,9 +1405,9 @@ void split_nsegments_lo_and_hi ( Addr sLo, Addr sHi,
    aspacem_assert(VG_IS_PAGE_ALIGNED(sLo));
    aspacem_assert(VG_IS_PAGE_ALIGNED(sHi+1));
 
-   if (sLo > 0)
+   if (sLo > Addr_MIN)
       split_nsegment_at(sLo);
-   if (sHi < sHi+1)
+   if (sHi < Addr_MAX)
       split_nsegment_at(sHi+1);
 
    *iLo = find_nsegment_idx(sLo);
