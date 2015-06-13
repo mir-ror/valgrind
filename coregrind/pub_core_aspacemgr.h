@@ -77,10 +77,6 @@ extern Bool VG_(am_is_valid_for_aspacem_minAddr)( Addr addr,
 // Querying current status
 
 
-/* Find the next non-free segment along from 'here'. */
-extern NSegment const* VG_(am_next_nsegment) ( const NSegment* here,
-                                               Bool fwds );
-
 /* Is the area [start .. start+len-1] validly accessible by
    valgrind with at least the permissions 'prot' ?  To find out
    simply if said area merely belongs to valgrind, pass 

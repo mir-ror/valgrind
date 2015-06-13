@@ -1120,7 +1120,7 @@ NSegment const * VG_(am_find_nsegment) ( Addr a )
 
 
 /* Find the next segment along from 'here', if it is a non-SkFree segment. */
-NSegment const * VG_(am_next_nsegment) ( const NSegment* here, Bool fwds )
+static const NSegment *next_nsegment ( const NSegment* here, Bool fwds )
 {
    const NSegment *next;
 
@@ -1278,7 +1278,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
       if (seg->smode != SmUpper) return False;
       /* If the the abutting segment towards higher addresses is an SkAnonC
          segment, then ADDR is a future stack pointer. */
-      const NSegment *next = VG_(am_next_nsegment)(seg, /*forward*/ True);
+      const NSegment *next = next_nsegment(seg, /*forward*/ True);
       if (next == NULL || next->kind != SkAnonC) return False;
 
       /* OK; looks like a stack segment */
@@ -1289,7 +1289,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
       /* If the abutting segment towards lower addresses is an SkResvn
          segment, then ADDR is a stack pointer into mapped memory. */
       if (kind == MkUnmapped) return False;
-      const NSegment *next = VG_(am_next_nsegment)(seg, /*forward*/ False);
+      const NSegment *next = next_nsegment(seg, /*forward*/ False);
       if (next == NULL || next->kind != SkResvn || next->smode != SmUpper)
          return False;
 
@@ -1329,7 +1329,7 @@ Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start, /*OUT*/Addr *end )
          then this is OK. */
       if (seg->smode != SmUpper) goto bad;
       *start = seg->start;
-      seg = VG_(am_next_nsegment)(seg, /*forward*/ True);
+      seg = next_nsegment(seg, /*forward*/ True);
       if (!seg || seg->kind != SkAnonC || !seg->hasR || !seg->hasW) goto bad;
       *end = seg->end;
       return True;
@@ -3125,7 +3125,7 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
       return sres;
    }
 
-   const NSegment *anon_seg = VG_(am_next_nsegment)(seg, True/*fwds*/);
+   const NSegment *anon_seg = next_nsegment(seg, True/*fwds*/);
    vg_assert(anon_seg != NULL);
 
    udelta = VG_PGROUNDUP(anon_seg->start - addr);
