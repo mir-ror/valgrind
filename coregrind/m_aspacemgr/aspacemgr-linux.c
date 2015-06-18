@@ -321,7 +321,7 @@ static Addr aspacem_cStart = 0;
 static Addr aspacem_vStart = 0;
 
 
-#define AM_SANITY_CHECK                                      \
+#define AM_SANITY_CHECK()                                    \
    do {                                                      \
       if (VG_(clo_sanity_level >= 3))                        \
          aspacem_assert(VG_(am_do_sync_check)                \
@@ -702,9 +702,9 @@ static Bool maybe_merge_nsegments ( NSegment* s1, const NSegment* s2 )
 /* Sanity-check and canonicalise the segment array (merge mergable
    segments).  Returns True if any segments were merged. */
 
-static Bool preen_nsegments ( void )
+static void preen_nsegments ( void )
 {
-   Int i, r, w, nsegments_used_old = nsegments_used;
+   Int i, r, w;
 
    /* Pass 1: check the segment array covers the entire address space
       exactly once, and also that each segment is sane. */
@@ -733,8 +733,6 @@ static Bool preen_nsegments ( void )
    w++;
    aspacem_assert(w > 0 && w <= nsegments_used);
    nsegments_used = w;
-
-   return nsegments_used != nsegments_used_old;
 }
 
 
@@ -1011,7 +1009,7 @@ Bool VG_(am_do_sync_check) ( const HChar* fn,
 /* Hook to allow sanity checks to be done from aspacemgr-common.c. */
 void ML_(am_do_sanity_check)( void )
 {
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
 }
 
 
@@ -1459,7 +1457,7 @@ static void add_segment ( const NSegment* seg )
 
    nsegments[iLo] = *seg;
 
-   (void)preen_nsegments();
+   preen_nsegments();
    if (0) VG_(am_show_nsegments)(0,"AFTER preen (add_segment)");
 }
 
@@ -1730,7 +1728,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 
    VG_(am_show_nsegments)(2, "With contents of /proc/self/maps");
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return suggested_clstack_end;
 }
 
@@ -1932,7 +1930,7 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
    if (floatIdx >= 0) 
       aspacem_assert(nsegments[floatIdx].kind == SkFree);
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
 
    /* Now see if we found anything which can satisfy the request. */
    switch (req->rkind) {
@@ -2054,7 +2052,7 @@ VG_(am_notify_client_mmap)( Addr a, SizeT len, UInt prot, UInt flags,
       }
    }
    add_segment( &seg );
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return needDiscard;
 }
 
@@ -2085,7 +2083,7 @@ VG_(am_notify_client_shmat)( Addr a, SizeT len, UInt prot )
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
    add_segment( &seg );
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return needDiscard;
 }
 
@@ -2135,8 +2133,8 @@ Bool VG_(am_notify_mprotect)( Addr start, SizeT len, UInt prot )
 
    /* Changing permissions could have made previously un-mergable
       segments mergeable.  Therefore have to re-preen them. */
-   (void)preen_nsegments();
-   AM_SANITY_CHECK;
+   preen_nsegments();
+   AM_SANITY_CHECK();
    return needDiscard;
 }
 
@@ -2173,7 +2171,7 @@ static void am_notify_munmap( Addr start, SizeT len )
 
    /* Unmapping could create two adjacent free segments, so a preen is
       needed.  add_segment() will do that, so no need to here. */
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
 }
 
 /* Notifies aspacem that an munmap completed successfully.  The
@@ -2285,7 +2283,7 @@ SysRes VG_(am_mmap_named_file_fixed_client)
    }
    add_segment( &seg );
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return sres;
 }
 
@@ -2343,7 +2341,7 @@ SysRes VG_(am_mmap_anon_fixed_client) ( Addr start, SizeT length, UInt prot )
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
    add_segment( &seg );
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return sres;
 }
 
@@ -2401,7 +2399,7 @@ SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
    add_segment( &seg );
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return sres;
 }
 
@@ -2499,7 +2497,7 @@ SysRes VG_(am_mmap_anon_float_valgrind)( SizeT length )
    seg.hasX  = True;
    add_segment( &seg );
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return sres;
 }
 
@@ -2590,7 +2588,7 @@ static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
    }
    add_segment( &seg );
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return sres;
 }
 /* Map privately a file at an unconstrained address for V, and update the
@@ -2818,7 +2816,7 @@ static Bool create_reservation (Addr start, SizeT length, ShrinkMode smode,
    
    add_segment( &seg );
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return True;
 }
 
@@ -2933,7 +2931,7 @@ extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
       aspacem_assert(nsegments[segR].start <= nsegments[segR].end);
    }
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return nsegments + segA;
 }
 
@@ -3182,12 +3180,12 @@ const NSegment *VG_(am_extend_map_client)( Addr addr, SizeT delta )
 
    SizeT seg_old_len = seg->end + 1 - seg->start;
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    sres = ML_(am_do_extend_mapping_NO_NOTIFY)( seg->start, 
                                                seg_old_len,
                                                seg_old_len + delta );
    if (sr_isError(sres)) {
-      AM_SANITY_CHECK;
+      AM_SANITY_CHECK();
       return NULL;
    } else {
       /* the area must not have moved */
@@ -3201,7 +3199,7 @@ const NSegment *VG_(am_extend_map_client)( Addr addr, SizeT delta )
    if (0)
       VG_(am_show_nsegments)(0, "VG_(am_extend_map_client) AFTER");
 
-   AM_SANITY_CHECK;
+   AM_SANITY_CHECK();
    return nsegments + find_nsegment_idx(addr);
 }
 
@@ -3254,7 +3252,7 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    sres = ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)
              ( old_addr, old_len, new_addr, new_len );
    if (sr_isError(sres)) {
-      AM_SANITY_CHECK;
+      AM_SANITY_CHECK();
       return False;
    } else {
       aspacem_assert(sr_Res(sres) == new_addr);
