@@ -1458,11 +1458,12 @@ static void add_segment ( const NSegment* seg )
 
 /* Clear out an NSegment record. */
 
-static void init_nsegment ( /*OUT*/NSegment* seg )
+static void init_nsegment ( /*OUT*/NSegment *seg, SegKind kind, Addr start,
+                            Addr end)
 {
-   seg->kind     = SkFree;
-   seg->start    = 0;
-   seg->end      = 0;
+   seg->kind     = kind;
+   seg->start    = start;
+   seg->end      = end;
    seg->smode    = SmFixed;
    seg->dev      = 0;
    seg->ino      = 0;
@@ -1473,18 +1474,6 @@ static void init_nsegment ( /*OUT*/NSegment* seg )
    seg->whatsit = WiUnknown;
 }
 
-/* Make an NSegment which holds a reservation. */
-
-static void init_resvn ( /*OUT*/NSegment* seg, Addr start, Addr end )
-{
-   aspacem_assert(start < end);
-   aspacem_assert(VG_IS_PAGE_ALIGNED(start));
-   aspacem_assert(VG_IS_PAGE_ALIGNED(end+1));
-   init_nsegment(seg);
-   seg->kind  = SkResvn;
-   seg->start = start;
-   seg->end   = end;
-}
 
 
 /*-----------------------------------------------------------------*/
@@ -1498,9 +1487,7 @@ static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
                                  const HChar* filename )
 {
    NSegment seg;
-   init_nsegment( &seg );
-   seg.start  = addr;
-   seg.end    = addr+len-1;
+   init_nsegment( &seg, SkFree, addr, addr + len - 1 );
    seg.dev    = dev;
    seg.ino    = ino;
    seg.offset = offset;
@@ -1608,10 +1595,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    aspacem_assert(sizeof(seg.mode)   == 4);
 
    /* Add a single interval covering the entire address space. */
-   init_nsegment(&seg);
-   seg.kind        = SkFree;
-   seg.start       = Addr_MIN;
-   seg.end         = Addr_MAX;
+   init_nsegment(&seg, SkFree, Addr_MIN, Addr_MAX);
    nsegments[0]    = seg;
    nsegments_used  = 1;
 
@@ -1690,11 +1674,11 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
                     (ULong)suggested_clstack_end);
 
    if (aspacem_cStart > Addr_MIN) {
-      init_resvn(&seg, Addr_MIN, aspacem_cStart-1);
+      init_nsegment(&seg, SkResvn, Addr_MIN, aspacem_cStart - 1);
       add_segment(&seg);
    }
    if (aspacem_maxAddr < Addr_MAX) {
-      init_resvn(&seg, aspacem_maxAddr+1, Addr_MAX);
+      init_nsegment(&seg, SkResvn, aspacem_maxAddr + 1, Addr_MAX);
       add_segment(&seg);
    }
 
@@ -1703,7 +1687,8 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
       because the advisor does first-fit and starts searches for
       valgrind allocations at the boundary, this is kind of necessary
       in order to get it to start allocating in the right place. */
-   init_resvn(&seg, aspacem_vStart,  aspacem_vStart + VKI_PAGE_SIZE - 1);
+   init_nsegment( &seg, SkResvn, aspacem_vStart,
+                  aspacem_vStart + VKI_PAGE_SIZE - 1 );
    add_segment(&seg);
 
    VG_(am_show_nsegments)(2, "Initial layout");
@@ -2019,10 +2004,8 @@ VG_(am_notify_client_mmap)( Addr a, SizeT len, UInt prot, UInt flags,
    /* Discard is needed if any of the just-trashed range had T. */
    needDiscard = any_Ts_in_range( a, len );
 
-   init_nsegment( &seg );
-   seg.kind   = (flags & VKI_MAP_ANONYMOUS) ? SkAnonC : SkFileC;
-   seg.start  = a;
-   seg.end    = a + len - 1;
+   init_nsegment( &seg, (flags & VKI_MAP_ANONYMOUS) ? SkAnonC : SkFileC,
+                  a, a + len - 1 );
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
@@ -2061,11 +2044,7 @@ VG_(am_notify_client_shmat)( Addr a, SizeT len, UInt prot )
    /* Discard is needed if any of the just-trashed range had T. */
    needDiscard = any_Ts_in_range( a, len );
 
-   init_nsegment( &seg );
-   seg.kind   = SkShmC;
-   seg.start  = a;
-   seg.end    = a + len - 1;
-   seg.offset = 0;
+   init_nsegment( &seg, SkShmC, a, a + len - 1 );
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
@@ -2133,9 +2112,7 @@ static void am_notify_munmap( Addr start, SizeT len )
    aspacem_assert(VG_IS_PAGE_ALIGNED(len));
    aspacem_assert(len > 0);
 
-   init_nsegment( &seg );
-   seg.start = start;
-   seg.end   = start + len - 1;
+   init_nsegment( &seg, SkFree, start, start + len - 1 );
 
    /* The segment becomes unused (free).  Segments from above
       aspacem_maxAddr were originally SkResvn and so we make them so
@@ -2250,10 +2227,7 @@ SysRes VG_(am_mmap_named_file_fixed_client)
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg );
-   seg.kind   = SkFileC;
-   seg.start  = start;
-   seg.end    = seg.start + VG_PGROUNDUP(length) - 1;
+   init_nsegment( &seg, SkFileC, start, start + VG_PGROUNDUP(length) - 1 );
    seg.offset = offset;
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
@@ -2319,10 +2293,7 @@ SysRes VG_(am_mmap_anon_fixed_client) ( Addr start, SizeT length, UInt prot )
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg );
-   seg.kind  = SkAnonC;
-   seg.start = start;
-   seg.end   = seg.start + VG_PGROUNDUP(length) - 1;
+   init_nsegment( &seg, SkAnonC, start, start + VG_PGROUNDUP(length) - 1 );
    seg.hasR  = toBool(prot & VKI_PROT_READ);
    seg.hasW  = toBool(prot & VKI_PROT_WRITE);
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
@@ -2377,10 +2348,8 @@ SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg );
-   seg.kind  = SkAnonC;
-   seg.start = advised;
-   seg.end   = seg.start + VG_PGROUNDUP(length) - 1;
+   init_nsegment( &seg, SkAnonC, advised,
+                  advised + VG_PGROUNDUP(length) - 1 );
    seg.hasR  = toBool(prot & VKI_PROT_READ);
    seg.hasW  = toBool(prot & VKI_PROT_WRITE);
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
@@ -2475,10 +2444,8 @@ SysRes VG_(am_mmap_anon_float_valgrind)( SizeT length )
 #endif
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg );
-   seg.kind  = SkAnonV;
-   seg.start = sr_Res(sres);
-   seg.end   = seg.start + VG_PGROUNDUP(length) - 1;
+   Addr start = sr_Res(sres);
+   init_nsegment( &seg, SkAnonV, start, start + VG_PGROUNDUP(length) - 1 );
    seg.hasR  = True;
    seg.hasW  = True;
    seg.hasX  = True;
@@ -2557,10 +2524,8 @@ static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg );
-   seg.kind   = SkFileV;
-   seg.start  = sr_Res(sres);
-   seg.end    = seg.start + VG_PGROUNDUP(length) - 1;
+   Addr start = sr_Res(sres);
+   init_nsegment( &seg, SkFileV, start, start + VG_PGROUNDUP(length) - 1 );
    seg.offset = offset;
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
@@ -2792,11 +2757,8 @@ static Bool create_reservation (Addr start, SizeT length, ShrinkMode smode,
    aspacem_assert(startSeg->start <= start2);
    aspacem_assert(end2 <= startSeg->end);
 
-   init_nsegment( &seg );
-   seg.kind  = SkResvn;
-   seg.start = start1;  /* NB: extra space is not included in the
-                           reservation. */
-   seg.end   = end1;
+   /* NB: extra space is not included in the reservation. */
+   init_nsegment( &seg, SkResvn, start1, end1 );
    seg.smode = smode;
    seg.whatsit = whatsit;
    
