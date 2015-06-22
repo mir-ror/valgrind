@@ -1771,7 +1771,7 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
         it does not trash either any of its own mappings or any of 
         valgrind's mappings.
    */
-   UInt i, j;
+   UInt j;
 
    Addr startPoint = forClient ? aspacem_cStart : aspacem_vStart;
 
@@ -1850,66 +1850,59 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
 
    /* ------ Implement the Default Policy ------ */
 
-   /* These hold indices for segments found during search, or -1 if not
-      found. */
-   Int floatIdx = -1;
-   Int fixedIdx = -1;
+   /* These are segments found during search, or NULL if not found. */
+   const NSegment *floatSeg = NULL;
+   const NSegment *fixedSeg = NULL;
 
    /* Don't waste time looking for a fixed match if not requested to. */
    Bool fixed_not_required = req->rkind == MAny;
 
-   i = find_nsegment_idx(startPoint);
+   const NSegment *seg = find_segment(startPoint);
 
    /* Examine holes from index i back round to i-1.  Record the
       index first fixed hole and the first floating hole which would
       satisfy the request. */
    for (j = 0; j < nsegments_used; j++) {
 
-      if (nsegments[i].kind != SkFree) {
-         i++;
-         if (i >= nsegments_used) i = 0;
-         continue;
-      }
+      if (seg->kind == SkFree) {
+         Addr holeStart = seg->start;
+         Addr holeEnd   = seg->end;
 
-      Addr holeStart = nsegments[i].start;
-      Addr holeEnd   = nsegments[i].end;
+         /* Stay sane .. */
+         aspacem_assert(holeStart <= holeEnd);
+         aspacem_assert(aspacem_minAddr <= holeStart);
+         aspacem_assert(holeEnd <= aspacem_maxAddr);
 
-      /* Stay sane .. */
-      aspacem_assert(holeStart <= holeEnd);
-      aspacem_assert(aspacem_minAddr <= holeStart);
-      aspacem_assert(holeEnd <= aspacem_maxAddr);
+         /* See if it's any use to us. */
+         Addr holeLen = holeEnd - holeStart + 1;  // FIXME: SizeT
 
-      /* See if it's any use to us. */
-      Addr holeLen = holeEnd - holeStart + 1;  // FIXME: SizeT
+         if (fixedSeg == NULL && holeStart <= reqStart && reqEnd <= holeEnd)
+            fixedSeg = seg;
 
-      if (fixedIdx == -1 && holeStart <= reqStart && reqEnd <= holeEnd)
-         fixedIdx = i;
-
-      if (floatIdx == -1 && holeLen >= reqLen)
-         floatIdx = i;
+         if (floatSeg == NULL && holeLen >= reqLen)
+            floatSeg = seg;
   
-      /* Don't waste time searching once we've found what we wanted. */
-      if ((fixed_not_required || fixedIdx >= 0) && floatIdx >= 0)
-         break;
-
-      i++;
-      if (i >= nsegments_used) i = 0;
+         /* Don't waste time searching once we've found what we wanted. */
+         if ((fixed_not_required || fixedSeg != NULL) && floatSeg != NULL)
+            break;
+      }
+      seg++;
+      if (seg == nsegments + nsegments_used)
+         seg = nsegments + 0;  // wrap around
    }
 
-   aspacem_assert(fixedIdx >= -1 && fixedIdx < nsegments_used);
-   if (fixedIdx >= 0) 
-      aspacem_assert(nsegments[fixedIdx].kind == SkFree);
+   if (fixedSeg != NULL) 
+      aspacem_assert(fixedSeg->kind == SkFree);
 
-   aspacem_assert(floatIdx >= -1 && floatIdx < nsegments_used);
-   if (floatIdx >= 0) 
-      aspacem_assert(nsegments[floatIdx].kind == SkFree);
+   if (floatSeg != NULL) 
+      aspacem_assert(floatSeg->kind == SkFree);
 
    AM_SANITY_CHECK();
 
    /* Now see if we found anything which can satisfy the request. */
    switch (req->rkind) {
       case MFixed:
-         if (fixedIdx >= 0) {
+         if (fixedSeg != NULL) {
             *ok = True;
             return req->start;
          } else {
@@ -1918,20 +1911,20 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
          }
          break;
       case MHint:
-         if (fixedIdx >= 0) {
+         if (fixedSeg != NULL) {
             *ok = True;
             return req->start;
          }
-         if (floatIdx >= 0) {
+         if (floatSeg != NULL) {
             *ok = True;
-            return nsegments[floatIdx].start;
+            return floatSeg->start;
          }
          *ok = False;
          return 0;
       case MAny:
-         if (floatIdx >= 0) {
+         if (floatSeg != NULL) {
             *ok = True;
-            return nsegments[floatIdx].start;
+            return floatSeg->start;
          }
          *ok = False;
          return 0;
