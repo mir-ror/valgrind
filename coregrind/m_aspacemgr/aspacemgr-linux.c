@@ -3062,7 +3062,7 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
    }
 
    const NSegment *anon_seg = next_nsegment(seg, True/*fwds*/);
-   vg_assert(anon_seg != NULL);
+   aspacem_assert(anon_seg != NULL);
 
    udelta = VG_PGROUNDUP(anon_seg->start - addr);
    *new_stack_base = anon_seg->start - udelta;
