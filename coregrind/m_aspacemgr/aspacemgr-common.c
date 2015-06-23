@@ -130,6 +130,32 @@ UInt ML_(am_sprintf) ( HChar* buf, const HChar *format, ... )
    return ret;
 }
 
+void ML_(am_show_len_concisely)( /*OUT*/HChar *buf, Addr start, Addr end )
+{
+   const HChar *fmt;
+   ULong len = ((ULong)end) - ((ULong)start) + 1;
+
+   if (len < 10*1000*1000ULL) {
+      fmt = "%7llu";
+   } 
+   else if (len < 999999ULL * (1ULL<<20)) {
+      fmt = "%6llum";
+      len >>= 20;
+   }
+   else if (len < 999999ULL * (1ULL<<30)) {
+      fmt = "%6llug";
+      len >>= 30;
+   }
+   else if (len < 999999ULL * (1ULL<<40)) {
+      fmt = "%6llut";
+      len >>= 40;
+   }
+   else {
+      fmt = "%6llue";
+      len >>= 50;
+   }
+   ML_(am_sprintf)(buf, fmt, len);
+}
 
 //--------------------------------------------------------------
 // Direct access to a handful of syscalls.  This avoids dependence on

@@ -314,6 +314,7 @@ COREGRIND_SOURCES_COMMON = \
 	m_aspacemgr/aspacemgr-common.c \
 	m_aspacemgr/aspacemgr-linux.c \
 	m_aspacemgr/aspacemgr-segnames.c \
+	m_aspacemgr/aspacemgr-segments.c \
 	m_coredump/coredump-elf.c \
 	m_coredump/coredump-macho.c \
 	m_debuginfo/misc.c \

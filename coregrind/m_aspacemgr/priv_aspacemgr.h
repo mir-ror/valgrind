@@ -154,6 +154,22 @@ const HChar *ML_(am_get_segname)(Int fnIdx);
 /* Return the sequence number of the segment name */
 Int ML_(am_segname_get_seqnr)(Int fnIdx);
 
+/* ------ Implemented in aspacemgr-segments.c ------ */
+void ML_(am_segments_init)( void );
+void ML_(am_add_segment)( const NSegment *seg );
+void ML_(am_show_len_concisely)( /*OUT*/HChar *buf, Addr start, Addr end );
+void ML_(am_show_segment_full)( Int logLevel, Int segNo, const NSegment *seg );
+void ML_(am_change_permissions)( Addr start, SizeT len, UInt prot );
+void ML_(am_clientise)( Addr start, SizeT len );
+void ML_(am_init_segment)( /*OUT*/NSegment *seg, SegKind kind, Addr start,
+                           Addr end);
+const NSegment *ML_(am_next_segment)( const NSegment *here, Bool fwds );
+NSegment *ML_(am_find_segment)( Addr a );
+
+
+#define Addr_MIN ((Addr)0)
+#define Addr_MAX ((Addr)(-1ULL))
+
 #endif   // __PRIV_ASPACEMGR_H
 
 /*--------------------------------------------------------------------*/

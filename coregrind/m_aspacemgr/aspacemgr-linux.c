@@ -43,6 +43,9 @@
 #include "priv_aspacemgr.h"
 #include "config.h"
 
+/* FIXME: for now */
+extern NSegment nsegments[];
+extern Int      nsegments_used;
 
 /* Note: many of the exported functions implemented below are
    described more fully in comments in pub_core_aspacemgr.h.
@@ -143,7 +146,7 @@
    order, giving account of every byte of it.  Free spaces are
    represented explicitly as this makes many operations simpler.
    Mergeable adjacent segments are aggressively merged so as to create
-   a "normalised" representation (preen_nsegments).
+   a "normalised" representation.
 
    There are 7 (mutually-exclusive) segment kinds, the meaning of
    which is important:
@@ -268,31 +271,6 @@
 
 /* ------ start of STATE for the address-space manager ------ */
 
-/* Max number of segments we can track.  On Android, virtual address
-   space is limited, so keep a low limit -- 5000 x sizef(NSegment) is
-   360KB. */
-#if defined(VGPV_arm_linux_android) \
-    || defined(VGPV_x86_linux_android) \
-    || defined(VGPV_mips32_linux_android) \
-    || defined(VGPV_arm64_linux_android)
-# define VG_N_SEGMENTS 5000
-#else
-# define VG_N_SEGMENTS 30000
-#endif
-
-/* Array [0 .. nsegments_used-1] of all mappings. */
-/* Sorted by .addr field. */
-/* I: len may not be zero. */
-/* I: overlapping segments are not allowed. */
-/* I: the segments cover the entire address space precisely. */
-/* Each segment can optionally hold an index into the filename table. */
-
-static NSegment nsegments[VG_N_SEGMENTS];
-static Int      nsegments_used = 0;
-
-#define Addr_MIN ((Addr)0)
-#define Addr_MAX ((Addr)(-1ULL))
-
 /* Limits etc */
 
 
@@ -332,8 +310,6 @@ static Addr aspacem_vStart = 0;
 
 /* ------ Forwards decls ------ */
 
-static inline NSegment *find_segment( Addr a );
-
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
                               ULong dev, ULong ino, Off64T offset, 
@@ -356,384 +332,6 @@ static void parse_procselfmaps (
 #  define ARM_LINUX_FAKE_COMMPAGE_START 0xFFFF0000
 #  define ARM_LINUX_FAKE_COMMPAGE_END1  0xFFFF1000
 #endif
-
-
-
-/*-----------------------------------------------------------------*/
-/*---                                                           ---*/
-/*--- Displaying the segment array.                             ---*/
-/*---                                                           ---*/
-/*-----------------------------------------------------------------*/
-
-static const HChar* show_SegKind ( SegKind sk )
-{
-   switch (sk) {
-      case SkFree:  return "    ";
-      case SkAnonC: return "anon";
-      case SkAnonV: return "ANON";
-      case SkFileC: return "file";
-      case SkFileV: return "FILE";
-      case SkShmC:  return "shm ";
-      case SkResvn: return "RSVN";
-      default:      return "????";
-   }
-}
-
-static const HChar* show_ShrinkMode ( ShrinkMode sm )
-{
-   switch (sm) {
-      case SmLower: return "SmLower";
-      case SmUpper: return "SmUpper";
-      case SmFixed: return "SmFixed";
-      default: return "Sm?????";
-   }
-}
-
-static void show_len_concisely ( /*OUT*/HChar* buf, Addr start, Addr end )
-{
-   const HChar* fmt;
-   ULong len = ((ULong)end) - ((ULong)start) + 1;
-
-   if (len < 10*1000*1000ULL) {
-      fmt = "%7llu";
-   } 
-   else if (len < 999999ULL * (1ULL<<20)) {
-      fmt = "%6llum";
-      len >>= 20;
-   }
-   else if (len < 999999ULL * (1ULL<<30)) {
-      fmt = "%6llug";
-      len >>= 30;
-   }
-   else if (len < 999999ULL * (1ULL<<40)) {
-      fmt = "%6llut";
-      len >>= 40;
-   }
-   else {
-      fmt = "%6llue";
-      len >>= 50;
-   }
-   ML_(am_sprintf)(buf, fmt, len);
-}
-
-/* Show full details of an NSegment */
-
-static void show_nsegment_full ( Int logLevel, Int segNo, const NSegment* seg )
-{
-   HChar len_buf[20];
-   const HChar* name = ML_(am_get_segname)( seg->fnIdx );
-
-   if (name == NULL)
-      name = "(none)";
-
-   show_len_concisely(len_buf, seg->start, seg->end);
-
-   VG_(debugLog)(
-      logLevel, "aspacem",
-      "%3d: %s %010llx-%010llx %s %c%c%c%c%c %s "
-      "d=0x%03llx i=%-7lld o=%-7lld (%d,%d) %s\n",
-      segNo, show_SegKind(seg->kind),
-      (ULong)seg->start, (ULong)seg->end, len_buf,
-      seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
-      seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-',
-      seg->whatsit,
-      show_ShrinkMode(seg->smode),
-      seg->dev, seg->ino, seg->offset,
-      ML_(am_segname_get_seqnr)(seg->fnIdx), seg->fnIdx,
-      name
-   );
-}
-
-
-/* Show an NSegment in a user-friendly-ish way. */
-
-static void show_nsegment ( Int logLevel, Int segNo, const NSegment* seg )
-{
-   HChar len_buf[20];
-   show_len_concisely(len_buf, seg->start, seg->end);
-
-   switch (seg->kind) {
-
-      case SkFree:
-         VG_(debugLog)(
-            logLevel, "aspacem",
-            "%3d: %s %010llx-%010llx %s\n",
-            segNo, show_SegKind(seg->kind),
-            (ULong)seg->start, (ULong)seg->end, len_buf
-         );
-         break;
-
-      case SkAnonC: case SkAnonV: case SkShmC:
-         VG_(debugLog)(
-            logLevel, "aspacem",
-            "%3d: %s %010llx-%010llx %s %c%c%c%c%c\n",
-            segNo, show_SegKind(seg->kind),
-            (ULong)seg->start, (ULong)seg->end, len_buf,
-            seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
-            seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-',
-            seg->whatsit
-         );
-         break;
-
-      case SkFileC: case SkFileV:
-         VG_(debugLog)(
-            logLevel, "aspacem",
-            "%3d: %s %010llx-%010llx %s %c%c%c%c%c d=0x%03llx "
-            "i=%-7lld o=%-7lld (%d,%d)\n",
-            segNo, show_SegKind(seg->kind),
-            (ULong)seg->start, (ULong)seg->end, len_buf,
-            seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
-            seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-', 
-            seg->whatsit,
-            seg->dev, seg->ino, seg->offset,
-            ML_(am_segname_get_seqnr)(seg->fnIdx), seg->fnIdx
-         );
-         break;
-
-      case SkResvn:
-         VG_(debugLog)(
-            logLevel, "aspacem",
-            "%3d: %s %010llx-%010llx %s %c%c%c%c%c %s\n",
-            segNo, show_SegKind(seg->kind),
-            (ULong)seg->start, (ULong)seg->end, len_buf,
-            seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
-            seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-', 
-            seg->whatsit,
-            show_ShrinkMode(seg->smode)
-         );
-         break;
-
-      default:
-         VG_(debugLog)(
-            logLevel, "aspacem",
-            "%3d: ???? UNKNOWN SEGMENT KIND\n", 
-            segNo 
-         );
-         break;
-   }
-}
-
-/* Print out the segment array (debugging only!). */
-void VG_(am_show_nsegments) ( Int logLevel, const HChar* who )
-{
-   Int i;
-   VG_(debugLog)(logLevel, "aspacem",
-                 "<<< SHOW_SEGMENTS: %s (%d segments)\n", 
-                 who, nsegments_used);
-   ML_(am_show_segnames)( logLevel, who);
-   for (i = 0; i < nsegments_used; i++)
-     show_nsegment( logLevel, i, &nsegments[i] );
-   VG_(debugLog)(logLevel, "aspacem",
-                 ">>>\n");
-}
-
-
-/* Get the filename corresponding to this segment, if known and if it
-   has one. */
-const HChar* VG_(am_get_filename)( NSegment const * seg )
-{
-   aspacem_assert(seg);
-   return ML_(am_get_segname)( seg->fnIdx );
-}
-
-/* Collect up the start addresses of segments whose kind matches one of
-   the kinds specified in kind_mask.
-   The interface is a bit strange in order to avoid potential
-   segment-creation races caused by dynamic allocation of the result
-   buffer *starts.
-
-   The function first computes how many entries in the result
-   buffer *starts will be needed.  If this number <= nStarts,
-   they are placed in starts[0..], and the number is returned.
-   If nStarts is not large enough, nothing is written to
-   starts[0..], and the negation of the size is returned.
-
-   Correct use of this function may mean calling it multiple times in
-   order to establish a suitably-sized buffer. */
-
-Int VG_(am_get_segment_starts)( UInt kind_mask, Addr* starts, Int nStarts )
-{
-   Int i, j, nSegs;
-
-   /* don't pass dumbass arguments */
-   aspacem_assert(nStarts > 0);
-
-   nSegs = 0;
-   for (i = 0; i < nsegments_used; i++) {
-      if ((nsegments[i].kind & kind_mask) != 0)
-         nSegs++;
-   }
-
-   if (nSegs > nStarts) {
-      /* The buffer isn't big enough.  Tell the caller how big it needs
-         to be. */
-      return -nSegs;
-   }
-
-   /* There's enough space.  So write into the result buffer. */
-   aspacem_assert(nSegs <= nStarts);
-
-   j = 0;
-   for (i = 0; i < nsegments_used; i++) {
-      if ((nsegments[i].kind & kind_mask) != 0)
-         starts[j++] = nsegments[i].start;
-   }
-
-   aspacem_assert(j == nSegs); /* this should not fail */
-   return nSegs;
-}
-
-
-/*-----------------------------------------------------------------*/
-/*---                                                           ---*/
-/*--- Sanity checking and preening of the segment array.        ---*/
-/*---                                                           ---*/
-/*-----------------------------------------------------------------*/
-
-/* Check representational invariants for NSegments. */
-
-static Bool sane_NSegment ( const NSegment* s )
-{
-   if (s == NULL) return False;
-
-   /* No zero sized segments and no wraparounds. */
-   if (s->start > s->end) return False;
-
-   /* require page alignment */
-   if (!VG_IS_PAGE_ALIGNED(s->start)) return False;
-   if (!VG_IS_PAGE_ALIGNED(s->end+1)) return False;
-
-   switch (s->kind) {
-
-      case SkFree:
-         return 
-            s->smode == SmFixed
-            && s->dev == 0 && s->ino == 0 && s->offset == 0 && s->fnIdx == -1 
-            && !s->hasR && !s->hasW && !s->hasX && !s->hasT
-            && s->whatsit == WiUnknown;
-
-      case SkAnonC: case SkAnonV: case SkShmC:
-         return 
-            s->smode == SmFixed 
-            && s->dev == 0 && s->ino == 0 && s->offset == 0 && s->fnIdx == -1
-            && (s->kind==SkAnonC ? True : s->whatsit == WiUnknown);
-
-      case SkFileC: case SkFileV:
-         return 
-            s->smode == SmFixed
-            && ML_(am_sane_segname)(s->fnIdx)
-            && s->whatsit == WiUnknown;
-
-      case SkResvn: 
-         return 
-            s->dev == 0 && s->ino == 0 && s->offset == 0 && s->fnIdx == -1 
-            && !s->hasR && !s->hasW && !s->hasX && !s->hasT
-            && (s->whatsit == WiClientBreak || s->whatsit == WiClientStack ||
-                s->whatsit == WiUnknown);
-
-      default:
-         return False;
-   }
-}
-
-
-/* Try merging s2 into s1, if possible.  If successful, s1 is
-   modified, and True is returned.  Otherwise s1 is unchanged and
-   False is returned. */
-
-static Bool maybe_merge_nsegments ( NSegment* s1, const NSegment* s2 )
-{
-   if (s1->kind != s2->kind) 
-      return False;
-
-   if (s1->end+1 != s2->start)
-      return False;
-
-   /* reject cases which would cause wraparound */
-   if (s1->start > s2->end)
-      return False;
-
-   switch (s1->kind) {
-
-      case SkFree:
-         s1->end = s2->end;
-         return True;
-
-      case SkAnonC: case SkAnonV:
-         if (s1->hasR == s2->hasR && s1->hasW == s2->hasW 
-             && s1->hasX == s2->hasX && s1->whatsit == s2->whatsit) {
-            s1->end = s2->end;
-            s1->hasT |= s2->hasT;
-            return True;
-         }
-         break;
-
-      case SkFileC: case SkFileV:
-         if (s1->hasR == s2->hasR 
-             && s1->hasW == s2->hasW && s1->hasX == s2->hasX
-             && s1->dev == s2->dev && s1->ino == s2->ino
-             && s2->offset == s1->offset
-                              + ((ULong)s2->start) - ((ULong)s1->start) ) {
-            s1->end = s2->end;
-            s1->hasT |= s2->hasT;
-            ML_(am_dec_refcount)(s1->fnIdx);
-            return True;
-         }
-         break;
-
-      case SkShmC:
-         return False;
-
-      case SkResvn:
-         if (s1->smode == SmFixed && s2->smode == SmFixed) {
-            s1->end = s2->end;
-            return True;
-         }
-
-      default:
-         break;
-   
-   }
-
-   return False;
-}
-
-
-/* Sanity-check and canonicalise the segment array (merge mergable
-   segments).  Returns True if any segments were merged. */
-
-static void preen_nsegments ( void )
-{
-   Int i, r, w;
-
-   /* Pass 1: check the segment array covers the entire address space
-      exactly once, and also that each segment is sane. */
-   aspacem_assert(nsegments_used > 0);
-   aspacem_assert(nsegments[0].start == Addr_MIN);
-   aspacem_assert(nsegments[nsegments_used-1].end == Addr_MAX);
-
-   aspacem_assert(sane_NSegment(&nsegments[0]));
-   for (i = 1; i < nsegments_used; i++) {
-      aspacem_assert(sane_NSegment(&nsegments[i]));
-      aspacem_assert(nsegments[i-1].end+1 == nsegments[i].start);
-   }
-
-   /* Pass 2: merge as much as possible, using
-      maybe_merge_segments. */
-   w = 0;
-   for (r = 1; r < nsegments_used; r++) {
-      if (maybe_merge_nsegments(&nsegments[w], &nsegments[r])) {
-         /* nothing */
-      } else {
-         w++;
-         if (w != r) 
-            nsegments[w] = nsegments[r];
-      }
-   }
-   w++;
-   aspacem_assert(w > 0 && w <= nsegments_used);
-   nsegments_used = w;
-}
 
 
 /* Check the segment array corresponds with the kernel's view of
@@ -784,8 +382,8 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
    /* The kernel should not give us wraparounds. */
    aspacem_assert(addr <= addr + len - 1); 
 
-   const NSegment *segLo = find_segment( addr );
-   const NSegment *segHi = find_segment( addr + len - 1 );
+   const NSegment *segLo = ML_(am_find_segment)( addr );
+   const NSegment *segHi = ML_(am_find_segment)( addr + len - 1 );
 
    aspacem_assert(segLo <= segHi);
    aspacem_assert(segLo->start <= addr );
@@ -887,14 +485,14 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
          Addr start = addr;
          Addr end = start + len - 1;
          HChar len_buf[20];
-         show_len_concisely(len_buf, start, end);
+         ML_(am_show_len_concisely)(len_buf, start, end);
 
          sync_check_ok = False;
 
          VG_(debugLog)(
             0,"aspacem",
               "segment mismatch: V's seg 1st, kernel's 2nd:\n");
-         show_nsegment_full( 0, -1, seg );
+         ML_(am_show_segment_full)( 0, -1, seg );
          VG_(debugLog)(0,"aspacem", 
             "...: .... %010llx-%010llx %s %c%c%c.. ....... "
             "d=0x%03llx i=%-7lld o=%-7lld (.) m=. %s\n",
@@ -928,8 +526,8 @@ static void sync_check_gap_callback ( Addr addr, SizeT len )
    /* The kernel should not give us wraparounds. */
    aspacem_assert(addr <= addr + len - 1); 
 
-   const NSegment *segLo = find_segment( addr );
-   const NSegment *segHi = find_segment( addr + len - 1 );
+   const NSegment *segLo = ML_(am_find_segment)( addr );
+   const NSegment *segHi = ML_(am_find_segment)( addr + len - 1 );
 
    aspacem_assert(segLo <= segHi);
    aspacem_assert(segLo->start <= addr );
@@ -947,14 +545,14 @@ static void sync_check_gap_callback ( Addr addr, SizeT len )
          Addr start = addr;
          Addr end = start + len - 1;
          HChar len_buf[20];
-         show_len_concisely(len_buf, start, end);
+         ML_(am_show_len_concisely)(len_buf, start, end);
 
          sync_check_ok = False;
 
          VG_(debugLog)(
             0,"aspacem",
               "segment mismatch: V's gap 1st, kernel's 2nd:\n");
-         show_nsegment_full( 0, -1, seg );
+         ML_(am_show_segment_full)( 0, -1, seg );
          VG_(debugLog)(0,"aspacem", 
             "   : .... %010llx-%010llx %s\n",
             (ULong)start, (ULong)end, len_buf);
@@ -1006,147 +604,6 @@ void ML_(am_do_sanity_check)( void )
 }
 
 
-/*-----------------------------------------------------------------*/
-/*---                                                           ---*/
-/*--- Low level access / modification of the segment array.     ---*/
-/*---                                                           ---*/
-/*-----------------------------------------------------------------*/
-
-/* Binary search the interval array for a given address.  Since the
-   array covers the entire address space the search cannot fail.  The
-   _WRK function does the real work.  Its caller (just below) caches
-   the results thereof, to save time.  With N_CACHE of 63 we get a hit
-   rate exceeding 90% when running OpenOffice.
-
-   Re ">> 12", it doesn't matter that the page size of some targets
-   might be different from 12.  Really "(a >> 12) % N_CACHE" is merely
-   a hash function, and the actual cache entry is always validated
-   correctly against the selected cache entry before use.
-*/
-/* Don't call find_nsegment_idx_WRK; use find_nsegment_idx instead. */
-__attribute__((noinline))
-static UInt find_nsegment_idx_WRK ( Addr a )
-{
-   Addr a_mid_lo, a_mid_hi;
-   Int  mid,
-        lo = 0,
-        hi = nsegments_used-1;
-   while (True) {
-      /* current unsearched space is from lo to hi, inclusive. */
-      if (lo > hi) {
-         /* Not found.  This can't happen. */
-         ML_(am_barf)("find_nsegment_idx: not found");
-      }
-      mid      = (lo + hi) / 2;
-      a_mid_lo = nsegments[mid].start;
-      a_mid_hi = nsegments[mid].end;
-
-      if (a < a_mid_lo) { hi = mid-1; continue; }
-      if (a > a_mid_hi) { lo = mid+1; continue; }
-      aspacem_assert(a >= a_mid_lo && a <= a_mid_hi);
-      aspacem_assert(0 <= mid && mid < nsegments_used);
-      return mid;
-   }
-}
-
-inline static UInt find_nsegment_idx ( Addr a )
-{
-#  define N_CACHE 131 /*prime*/
-   static Addr cache_pageno[N_CACHE];
-   static Int  cache_segidx[N_CACHE];
-   static Bool cache_inited = False;
-
-   static UWord n_q = 0;
-   static UWord n_m = 0;
-
-   UWord ix;
-
-   if (LIKELY(cache_inited)) {
-      /* do nothing */
-   } else {
-      for (ix = 0; ix < N_CACHE; ix++) {
-         cache_pageno[ix] = 0;
-         cache_segidx[ix] = -1;
-      }
-      cache_inited = True;
-   }
-
-   ix = (a >> 12) % N_CACHE;
-
-   n_q++;
-   if (0 && 0 == (n_q & 0xFFFF))
-      VG_(debugLog)(0,"xxx","find_nsegment_idx: %lu %lu\n", n_q, n_m);
-
-   if ((a >> 12) == cache_pageno[ix]
-       && cache_segidx[ix] >= 0
-       && cache_segidx[ix] < nsegments_used
-       && nsegments[cache_segidx[ix]].start <= a
-       && a <= nsegments[cache_segidx[ix]].end) {
-      /* hit */
-      /* aspacem_assert( cache_segidx[ix] == find_nsegment_idx_WRK(a) ); */
-      return cache_segidx[ix];
-   } else {
-      /* miss */
-      n_m++;
-      cache_segidx[ix] = find_nsegment_idx_WRK(a);
-      cache_pageno[ix] = a >> 12;
-      return cache_segidx[ix];
-   }
-#  undef N_CACHE
-}
-
-static NSegment *find_segment( Addr a )
-{
-   return nsegments + find_nsegment_idx(a);
-}
-
-/* Finds the segment containing 'a'.  Only returns non-SkFree segments. */
-NSegment const * VG_(am_find_nsegment) ( Addr a )
-{
-   const NSegment *seg = find_segment(a);
-
-   aspacem_assert(seg->start <= a);
-   aspacem_assert(a <= seg->end);
-
-   return seg->kind == SkFree ? NULL : seg;
-}
-
-
-/* Find the next segment along from 'here', if it is a non-SkFree segment. */
-static const NSegment *next_nsegment ( const NSegment* here, Bool fwds )
-{
-   const NSegment *next;
-
-   if (fwds) {
-      next = here + 1;
-      if (next >= nsegments + nsegments_used)
-         return NULL;
-   } else {
-      if (here == nsegments)
-         return NULL;
-      next = here - 1;
-   }
-   return (next->kind == SkFree) ? NULL : next;
-}
-
-
-/* Trivial fn: return the total amount of space in anonymous mappings,
-   both for V and the client.  Is used for printing stats in
-   out-of-memory messages. */
-ULong VG_(am_get_anonsize_total)( void )
-{
-   Int   i;
-   ULong total = 0;
-   for (i = 0; i < nsegments_used; i++) {
-      if (nsegments[i].kind == SkAnonC || nsegments[i].kind == SkAnonV) {
-         total += (ULong)nsegments[i].end 
-                  - (ULong)nsegments[i].start + 1ULL;
-      }
-   }
-   return total;
-}
-
-
 /* Test if a piece of memory is addressable by client or by valgrind with at
    least the "prot" protection permissions by examining the underlying
    segments. The KINDS argument specifies the allowed segments ADDR may
@@ -1166,19 +623,19 @@ Bool is_valid_for( UInt kinds, Addr start, SizeT len, UInt prot )
    needW = toBool(prot & VKI_PROT_WRITE);
    needX = toBool(prot & VKI_PROT_EXEC);
 
-   const NSegment *segLo = find_segment(start);
+   const NSegment *segLo = ML_(am_find_segment)(start);
    const NSegment *segHi;
    aspacem_assert(start >= segLo->start);
 
    if (start+len-1 <= segLo->end) {
-      /* This is a speedup hack which avoids calling find_segment
+      /* This is a speedup hack which avoids calling ML_(am_find_segment)
          a second time when possible.  It is always correct to just
          use the "else" clause below, but is_valid_for_client is
          called a lot by the leak checker, so avoiding pointless calls
-         to find_segment, which can be expensive, is helpful. */
+         to ML_(am_find_segment), which can be expensive, is helpful. */
       segHi = segLo;
    } else {
-      segHi = find_segment(start + len - 1);
+      segHi = ML_(am_find_segment)(start + len - 1);
    }
 
    for (const NSegment *seg = segLo; seg <= segHi; seg++) {
@@ -1233,8 +690,8 @@ static Bool any_Ts_in_range ( Addr start, SizeT len )
 {
    aspacem_assert(len > 0);
    aspacem_assert(start + len > start);
-   const NSegment *segLo = find_segment(start);
-   const NSegment *segHi = find_segment(start + len - 1);
+   const NSegment *segLo = ML_(am_find_segment)(start);
+   const NSegment *segHi = ML_(am_find_segment)(start + len - 1);
    for (const NSegment *seg = segLo; seg <= segHi; seg++) {
       if (seg->hasT)
          return True;
@@ -1255,7 +712,7 @@ static Bool any_Ts_in_range ( Addr start, SizeT len )
 */
 Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
 {
-   const NSegment *seg = find_segment(addr);
+   const NSegment *seg = ML_(am_find_segment)(addr);
 
    switch (seg->kind) {
    case SkFree:
@@ -1270,7 +727,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
       if (seg->smode != SmUpper) return False;
       /* If the the abutting segment towards higher addresses is an SkAnonC
          segment, then ADDR is a future stack pointer. */
-      const NSegment *next = next_nsegment(seg, /*forward*/ True);
+      const NSegment *next = ML_(am_next_segment)(seg, /*forward*/ True);
       if (next == NULL || next->kind != SkAnonC) return False;
 
       /* OK; looks like a stack segment */
@@ -1281,7 +738,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
       /* If the abutting segment towards lower addresses is an SkResvn
          segment, then ADDR is a stack pointer into mapped memory. */
       if (kind == MkUnmapped) return False;
-      const NSegment *next = next_nsegment(seg, /*forward*/ False);
+      const NSegment *next = ML_(am_next_segment)(seg, /*forward*/ False);
       if (next == NULL || next->kind != SkResvn || next->smode != SmUpper)
          return False;
 
@@ -1300,7 +757,7 @@ Bool VG_(am_addr_is_in_extensible_client_stack)( Addr addr, MapKind kind )
    False and set the limts to 0. */
 Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start, /*OUT*/Addr *end )
 {
-   const NSegment *seg = find_segment(addr);
+   const NSegment *seg = ML_(am_find_segment)(addr);
 
    switch (seg->kind) {
    case SkFree:
@@ -1321,7 +778,7 @@ Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start, /*OUT*/Addr *end )
          then this is OK. */
       if (seg->smode != SmUpper) goto bad;
       *start = seg->start;
-      seg = next_nsegment(seg, /*forward*/ True);
+      seg = ML_(am_next_segment)(seg, /*forward*/ True);
       if (!seg || seg->kind != SkAnonC || !seg->hasR || !seg->hasW) goto bad;
       *end = seg->end;
       return True;
@@ -1338,146 +795,6 @@ Bool VG_(am_stack_limits)( Addr addr, /*OUT*/Addr *start, /*OUT*/Addr *end )
 
 /*-----------------------------------------------------------------*/
 /*---                                                           ---*/
-/*--- Modifying the segment array, and constructing segments.   ---*/
-/*---                                                           ---*/
-/*-----------------------------------------------------------------*/
-
-/* Split the segment containing 'a' into two, so that 'a' is
-   guaranteed to be the start of a new segment.  If 'a' is already the
-   start of a segment, do nothing. */
-
-static void split_nsegment_at ( Addr a )
-{
-   UInt i, j;
-
-   aspacem_assert(a > Addr_MIN);
-   aspacem_assert(VG_IS_PAGE_ALIGNED(a));
-   aspacem_assert(nsegments_used > 0);
- 
-   i = find_nsegment_idx(a);
-
-   if (nsegments[i].start == a)
-      /* 'a' is already the start point of a segment, so nothing to be
-         done. */
-      return;
-
-   /* else we have to slide the segments upwards to make a hole */
-   if (nsegments_used >= VG_N_SEGMENTS)
-      ML_(am_barf_toolow)("VG_N_SEGMENTS");
-   for (j = nsegments_used-1; j > i; j--)
-      nsegments[j+1] = nsegments[j];
-   nsegments_used++;
-
-   nsegments[i+1]       = nsegments[i];
-   nsegments[i+1].start = a;
-   nsegments[i].end     = a-1;
-
-   if (nsegments[i].kind == SkFileV || nsegments[i].kind == SkFileC)
-      nsegments[i+1].offset 
-         += ((ULong)nsegments[i+1].start) - ((ULong)nsegments[i].start);
-
-   ML_(am_inc_refcount)(nsegments[i].fnIdx);
-
-   aspacem_assert(sane_NSegment(&nsegments[i]));
-   aspacem_assert(sane_NSegment(&nsegments[i+1]));
-}
-
-
-/* Do the minimum amount of segment splitting necessary to ensure that
-   sLo is the first address denoted by some segment and sHi is the
-   highest address denoted by some other segment.  Returns the indices
-   of the lowest and highest segments in the range. */
-
-static 
-void split_nsegments_lo_and_hi ( Addr sLo, Addr sHi,
-                                 /*OUT*/UInt* iLo,
-                                 /*OUT*/UInt* iHi )
-{
-   aspacem_assert(sLo < sHi);
-   aspacem_assert(VG_IS_PAGE_ALIGNED(sLo));
-   aspacem_assert(VG_IS_PAGE_ALIGNED(sHi+1));
-
-   if (sLo > Addr_MIN)
-      split_nsegment_at(sLo);
-   if (sHi < Addr_MAX)
-      split_nsegment_at(sHi+1);
-
-   *iLo = find_nsegment_idx(sLo);
-   *iHi = find_nsegment_idx(sHi);
-
-   aspacem_assert(*iLo <= *iHi);
-   aspacem_assert(nsegments[*iLo].start == sLo);
-   aspacem_assert(nsegments[*iHi].end == sHi);
-   /* Not that I'm overly paranoid or anything, definitely not :-) */
-}
-
-
-/* Add SEG to the collection, deleting/truncating any it overlaps.
-   This deals with all the tricky cases of splitting up segments as
-   needed. */
-
-static void add_segment ( const NSegment* seg )
-{
-   UInt i, iLo, iHi, delta;
-   Bool segment_is_sane;
-
-   Addr sStart = seg->start;
-   Addr sEnd   = seg->end;
-
-   aspacem_assert(sStart <= sEnd);
-   aspacem_assert(VG_IS_PAGE_ALIGNED(sStart));
-   aspacem_assert(VG_IS_PAGE_ALIGNED(sEnd+1));
-
-   segment_is_sane = sane_NSegment(seg);
-   if (!segment_is_sane) show_nsegment_full(0,-1,seg);
-   aspacem_assert(segment_is_sane);
-
-   split_nsegments_lo_and_hi( sStart, sEnd, &iLo, &iHi );
-
-   /* Now iLo .. iHi inclusive is the range of segment indices which
-      seg will replace.  If we're replacing more than one segment,
-      slide those above the range down to fill the hole. Before doing
-      that decrement the reference counters for the segments names of
-      the replaced segments. */
-   for (i = iLo; i <= iHi; ++i)
-      ML_(am_dec_refcount)(nsegments[i].fnIdx);
-   delta = iHi - iLo;
-
-   if (delta > 0) {
-      for (i = iLo; i < nsegments_used-delta; i++)
-         nsegments[i] = nsegments[i+delta];
-      nsegments_used -= delta;
-   }
-
-   nsegments[iLo] = *seg;
-
-   preen_nsegments();
-   if (0) VG_(am_show_nsegments)(0,"AFTER preen (add_segment)");
-}
-
-
-/* Clear out an NSegment record. */
-
-static void init_nsegment ( /*OUT*/NSegment *seg, SegKind kind, Addr start,
-                            Addr end)
-{
-   seg->kind     = kind;
-   seg->start    = start;
-   seg->end      = end;
-   seg->smode    = SmFixed;
-   seg->dev      = 0;
-   seg->ino      = 0;
-   seg->mode     = 0;
-   seg->offset   = 0;
-   seg->fnIdx    = -1;
-   seg->hasR = seg->hasW = seg->hasX = seg->hasT = False;
-   seg->whatsit = WiUnknown;
-}
-
-
-
-/*-----------------------------------------------------------------*/
-/*---                                                           ---*/
 /*--- Startup, including reading /proc/self/maps.               ---*/
 /*---                                                           ---*/
 /*-----------------------------------------------------------------*/
@@ -1487,7 +804,7 @@ static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
                                  const HChar* filename )
 {
    NSegment seg;
-   init_nsegment( &seg, SkFree, addr, addr + len - 1 );
+   ML_(am_init_segment)( &seg, SkFree, addr, addr + len - 1 );
    seg.dev    = dev;
    seg.ino    = ino;
    seg.offset = offset;
@@ -1527,8 +844,7 @@ static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
    if (filename)
       seg.fnIdx = ML_(am_allocate_segname)( filename );
 
-   if (0) show_nsegment( 2,0, &seg );
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 }
 
 Bool
@@ -1584,9 +900,6 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    aspacem_assert(sizeof(SizeT)  == sizeof(void*));
    aspacem_assert(sizeof(SSizeT) == sizeof(void*));
 
-   /* Initialise the string table for segment names. */
-   ML_(am_segnames_init)();
-
    /* Check that we can store the largest imaginable dev, ino and
       offset numbers in an NSegment. */
    aspacem_assert(sizeof(seg.dev)    == 8);
@@ -1594,10 +907,11 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    aspacem_assert(sizeof(seg.offset) == 8);
    aspacem_assert(sizeof(seg.mode)   == 4);
 
-   /* Add a single interval covering the entire address space. */
-   init_nsegment(&seg, SkFree, Addr_MIN, Addr_MAX);
-   nsegments[0]    = seg;
-   nsegments_used  = 1;
+   /* Initialise the string table for segment names. */
+   ML_(am_segnames_init)();
+
+   /* Initialise the segment structure. */
+   ML_(am_segments_init)();
 
    aspacem_minAddr = VG_(clo_aspacem_minAddr);
 
@@ -1674,12 +988,12 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
                     (ULong)suggested_clstack_end);
 
    if (aspacem_cStart > Addr_MIN) {
-      init_nsegment(&seg, SkResvn, Addr_MIN, aspacem_cStart - 1);
-      add_segment(&seg);
+      ML_(am_init_segment)(&seg, SkResvn, Addr_MIN, aspacem_cStart - 1);
+      ML_(am_add_segment)(&seg);
    }
    if (aspacem_maxAddr < Addr_MAX) {
-      init_nsegment(&seg, SkResvn, aspacem_maxAddr + 1, Addr_MAX);
-      add_segment(&seg);
+      ML_(am_init_segment)(&seg, SkResvn, aspacem_maxAddr + 1, Addr_MAX);
+      ML_(am_add_segment)(&seg);
    }
 
    /* Create a 1-page reservation at the notional initial
@@ -1687,9 +1001,9 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
       because the advisor does first-fit and starts searches for
       valgrind allocations at the boundary, this is kind of necessary
       in order to get it to start allocating in the right place. */
-   init_nsegment( &seg, SkResvn, aspacem_vStart,
-                  aspacem_vStart + VKI_PAGE_SIZE - 1 );
-   add_segment(&seg);
+   ML_(am_init_segment)( &seg, SkResvn, aspacem_vStart,
+                         aspacem_vStart + VKI_PAGE_SIZE - 1 );
+   ML_(am_add_segment)(&seg);
 
    VG_(am_show_nsegments)(2, "Initial layout");
 
@@ -1801,8 +1115,8 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
    /* ------ Implement Policy Exception #1 ------ */
 
    if (forClient && req->rkind == MFixed) {
-      const NSegment *segLo = find_segment(reqStart);
-      const NSegment *segHi = find_segment(reqEnd);
+      const NSegment *segLo = ML_(am_find_segment)(reqStart);
+      const NSegment *segHi = ML_(am_find_segment)(reqEnd);
       Bool allow = True;
       for (const NSegment *seg = segLo; seg <= segHi; seg++) {
          if (seg->kind == SkFree
@@ -1829,8 +1143,8 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
    /* ------ Implement Policy Exception #2 ------ */
 
    if (forClient && req->rkind == MHint) {
-      const NSegment *segLo = find_segment(reqStart);
-      const NSegment *segHi = find_segment(reqEnd);
+      const NSegment *segLo = ML_(am_find_segment)(reqStart);
+      const NSegment *segHi = ML_(am_find_segment)(reqEnd);
       Bool allow = True;
       for (const NSegment *seg = segLo; seg <= segHi; seg++) {
          if (seg->kind == SkFree || seg->kind == SkResvn) {
@@ -1857,7 +1171,7 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
    /* Don't waste time looking for a fixed match if not requested to. */
    Bool fixed_not_required = req->rkind == MAny;
 
-   const NSegment *seg = find_segment(startPoint);
+   const NSegment *seg = ML_(am_find_segment)(startPoint);
 
    /* Examine holes from index i back round to i-1.  Record the
       index first fixed hole and the first floating hole which would
@@ -1956,7 +1270,7 @@ Addr VG_(am_get_advisory_client_simple) ( Addr start, SizeT len,
 /* Similar to VG_(am_find_nsegment) but only returns free segments. */
 static NSegment const * VG_(am_find_free_nsegment) ( Addr a )
 {
-   const NSegment *seg = find_segment(a);
+   const NSegment *seg = ML_(am_find_segment)(a);
 
    aspacem_assert(seg->start <= a);
    aspacem_assert(a <= seg->end);
@@ -1997,8 +1311,8 @@ VG_(am_notify_client_mmap)( Addr a, SizeT len, UInt prot, UInt flags,
    /* Discard is needed if any of the just-trashed range had T. */
    needDiscard = any_Ts_in_range( a, len );
 
-   init_nsegment( &seg, (flags & VKI_MAP_ANONYMOUS) ? SkAnonC : SkFileC,
-                  a, a + len - 1 );
+   ML_(am_init_segment)( &seg, (flags & VKI_MAP_ANONYMOUS) ? SkAnonC : SkFileC,
+                         a, a + len - 1 );
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
@@ -2014,7 +1328,7 @@ VG_(am_notify_client_mmap)( Addr a, SizeT len, UInt prot, UInt flags,
          seg.fnIdx = ML_(am_allocate_segname)( buf );
       }
    }
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
    AM_SANITY_CHECK();
    return needDiscard;
 }
@@ -2037,11 +1351,11 @@ VG_(am_notify_client_shmat)( Addr a, SizeT len, UInt prot )
    /* Discard is needed if any of the just-trashed range had T. */
    needDiscard = any_Ts_in_range( a, len );
 
-   init_nsegment( &seg, SkShmC, a, a + len - 1 );
+   ML_(am_init_segment)( &seg, SkShmC, a, a + len - 1 );
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
    seg.hasX   = toBool(prot & VKI_PROT_EXEC);
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
    AM_SANITY_CHECK();
    return needDiscard;
 }
@@ -2058,41 +1372,18 @@ VG_(am_notify_client_shmat)( Addr a, SizeT len, UInt prot )
 
 Bool VG_(am_notify_mprotect)( Addr start, SizeT len, UInt prot )
 {
-   UInt i, iLo, iHi;
-   Bool newR, newW, newX, needDiscard;
-
    aspacem_assert(VG_IS_PAGE_ALIGNED(start));
    aspacem_assert(VG_IS_PAGE_ALIGNED(len));
 
    if (len == 0)
       return False;
 
-   newR = toBool(prot & VKI_PROT_READ);
-   newW = toBool(prot & VKI_PROT_WRITE);
-   newX = toBool(prot & VKI_PROT_EXEC);
-
    /* Discard is needed if we're dumping X permission */
-   needDiscard = any_Ts_in_range( start, len ) && !newX;
+   Bool newX = (prot & VKI_PROT_EXEC) != 0;
+   Bool needDiscard = any_Ts_in_range( start, len ) && !newX;
 
-   split_nsegments_lo_and_hi( start, start+len-1, &iLo, &iHi );
+   ML_(am_change_permissions)( start, len, prot );
 
-   for (i = iLo; i <= iHi; i++) {
-      /* Apply the permissions to all relevant segments. */
-      switch (nsegments[i].kind) {
-         case SkAnonC: case SkAnonV: case SkFileC: case SkFileV: case SkShmC:
-            nsegments[i].hasR = newR;
-            nsegments[i].hasW = newW;
-            nsegments[i].hasX = newX;
-            aspacem_assert(sane_NSegment(&nsegments[i]));
-            break;
-         default:
-            break;
-      }
-   }
-
-   /* Changing permissions could have made previously un-mergable
-      segments mergeable.  Therefore have to re-preen them. */
-   preen_nsegments();
    AM_SANITY_CHECK();
    return needDiscard;
 }
@@ -2105,7 +1396,7 @@ static void am_notify_munmap( Addr start, SizeT len )
    aspacem_assert(VG_IS_PAGE_ALIGNED(len));
    aspacem_assert(len > 0);
 
-   init_nsegment( &seg, SkFree, start, start + len - 1 );
+   ML_(am_init_segment)( &seg, SkFree, start, start + len - 1 );
 
    /* The segment becomes unused (free).  Segments from above
       aspacem_maxAddr were originally SkResvn and so we make them so
@@ -2124,10 +1415,8 @@ static void am_notify_munmap( Addr start, SizeT len )
       else
          seg.kind = SkFree;
 
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
-   /* Unmapping could create two adjacent free segments, so a preen is
-      needed.  add_segment() will do that, so no need to here. */
    AM_SANITY_CHECK();
 }
 
@@ -2220,7 +1509,8 @@ SysRes VG_(am_mmap_named_file_fixed_client)
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg, SkFileC, start, start + VG_PGROUNDUP(length) - 1 );
+   ML_(am_init_segment)( &seg, SkFileC, start,
+                         start + VG_PGROUNDUP(length) - 1 );
    seg.offset = offset;
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
@@ -2235,7 +1525,7 @@ SysRes VG_(am_mmap_named_file_fixed_client)
    } else if (ML_(am_resolve_filename)(fd, buf, VKI_PATH_MAX)) {
       seg.fnIdx = ML_(am_allocate_segname)( buf );
    }
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    AM_SANITY_CHECK();
    return sres;
@@ -2286,11 +1576,12 @@ SysRes VG_(am_mmap_anon_fixed_client) ( Addr start, SizeT length, UInt prot )
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg, SkAnonC, start, start + VG_PGROUNDUP(length) - 1 );
+   ML_(am_init_segment)( &seg, SkAnonC, start,
+                         start + VG_PGROUNDUP(length) - 1 );
    seg.hasR  = toBool(prot & VKI_PROT_READ);
    seg.hasW  = toBool(prot & VKI_PROT_WRITE);
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    AM_SANITY_CHECK();
    return sres;
@@ -2341,12 +1632,12 @@ SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
    }
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
-   init_nsegment( &seg, SkAnonC, advised,
-                  advised + VG_PGROUNDUP(length) - 1 );
+   ML_(am_init_segment)( &seg, SkAnonC, advised,
+                         advised + VG_PGROUNDUP(length) - 1 );
    seg.hasR  = toBool(prot & VKI_PROT_READ);
    seg.hasW  = toBool(prot & VKI_PROT_WRITE);
    seg.hasX  = toBool(prot & VKI_PROT_EXEC);
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    AM_SANITY_CHECK();
    return sres;
@@ -2438,11 +1729,12 @@ SysRes VG_(am_mmap_anon_float_valgrind)( SizeT length )
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
    Addr start = sr_Res(sres);
-   init_nsegment( &seg, SkAnonV, start, start + VG_PGROUNDUP(length) - 1 );
+   ML_(am_init_segment)( &seg, SkAnonV, start,
+                         start + VG_PGROUNDUP(length) - 1 );
    seg.hasR  = True;
    seg.hasW  = True;
    seg.hasX  = True;
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    AM_SANITY_CHECK();
    return sres;
@@ -2518,7 +1810,8 @@ static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
 
    /* Ok, the mapping succeeded.  Now notify the interval map. */
    Addr start = sr_Res(sres);
-   init_nsegment( &seg, SkFileV, start, start + VG_PGROUNDUP(length) - 1 );
+   ML_(am_init_segment)( &seg, SkFileV, start,
+                         start + VG_PGROUNDUP(length) - 1 );
    seg.offset = offset;
    seg.hasR   = toBool(prot & VKI_PROT_READ);
    seg.hasW   = toBool(prot & VKI_PROT_WRITE);
@@ -2531,7 +1824,7 @@ static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
    if (ML_(am_resolve_filename)(fd, buf, VKI_PATH_MAX)) {
       seg.fnIdx = ML_(am_allocate_segname)( buf );
    }
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    AM_SANITY_CHECK();
    return sres;
@@ -2566,7 +1859,7 @@ SysRes VG_(am_mmap_client_heap) ( SizeT length, Int prot )
 
    if (! sr_isError(res)) {
       Addr addr = sr_Res(res);
-      NSegment *seg = find_segment(addr);
+      NSegment *seg = ML_(am_find_segment)(addr);
 
       seg->whatsit = WiClientHeap;
    }
@@ -2656,8 +1949,6 @@ SysRes VG_(am_munmap_valgrind)( Addr start, SizeT len )
 
 Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
 {
-   UInt iLo, iHi;
-
    if (len == 0)
       return True;
    if (start + len < start)
@@ -2665,7 +1956,7 @@ Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
    if (!VG_IS_PAGE_ALIGNED(start) || !VG_IS_PAGE_ALIGNED(len))
       return False;
 
-   const NSegment *seg = find_segment(start);
+   const NSegment *seg = ML_(am_find_segment)(start);
    if (seg->kind != SkFileV && seg->kind != SkAnonV)
       return False;
    if (start+len-1 > seg->end)
@@ -2674,18 +1965,7 @@ Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
    aspacem_assert(start >= seg->start);
    aspacem_assert(start+len-1 <= seg->end);
 
-   /* This scheme is like how mprotect works: split the to-be-changed
-      range into its own segment(s), then mess with them (it).  There
-      should be only one. */
-   split_nsegments_lo_and_hi( start, start+len-1, &iLo, &iHi );
-   aspacem_assert(iLo == iHi);
-   switch (nsegments[iLo].kind) {
-      case SkFileV: nsegments[iLo].kind = SkFileC; break;
-      case SkAnonV: nsegments[iLo].kind = SkAnonC; break;
-      default: aspacem_assert(0); /* can't happen - guarded above */
-   }
-
-   preen_nsegments();
+   ML_(am_clientise)( start, len );
    return True;
 }
 
@@ -2694,7 +1974,7 @@ Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
    expected to belong to a client segment. */
 void VG_(am_set_segment_hasT)( Addr addr )
 {
-   NSegment *seg = find_segment(addr);
+   NSegment *seg = ML_(am_find_segment)(addr);
    SegKind kind = seg->kind;
    aspacem_assert(kind == SkAnonC || kind == SkFileC || kind == SkShmC);
    seg->hasT = True;
@@ -2733,12 +2013,12 @@ static Bool create_reservation (Addr start, SizeT length, ShrinkMode smode,
    aspacem_assert(VG_IS_PAGE_ALIGNED(start2));
    aspacem_assert(VG_IS_PAGE_ALIGNED(end2+1));
 
-   const NSegment *startSeg = find_segment( start2 );
-   const NSegment *endSeg   = find_segment( end2 );
+   const NSegment *startSeg = ML_(am_find_segment)( start2 );
+   const NSegment *endSeg   = ML_(am_find_segment)( end2 );
 
    /* If the start and end points don't fall within the same (free)
       segment, we're hosed.  This does rely on the assumption that all
-      mergeable adjacent segments can be merged, but add_segment()
+      mergeable adjacent segments can be merged, but ML_(am_add_segment)()
       should ensure that. */
    if (startSeg != endSeg)
       return False;
@@ -2751,11 +2031,11 @@ static Bool create_reservation (Addr start, SizeT length, ShrinkMode smode,
    aspacem_assert(end2 <= startSeg->end);
 
    /* NB: extra space is not included in the reservation. */
-   init_nsegment( &seg, SkResvn, start1, end1 );
+   ML_(am_init_segment)( &seg, SkResvn, start1, end1 );
    seg.smode = smode;
    seg.whatsit = whatsit;
    
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    AM_SANITY_CHECK();
    return True;
@@ -2783,7 +2063,7 @@ extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
 
    *overflow = False;
 
-   segA = find_segment(addr);
+   segA = ML_(am_find_segment)(addr);
    aspacem_assert(segA->kind == SkAnonC);
 
    if (delta == 0)
@@ -2926,7 +2206,7 @@ SysRes VG_(am_alloc_client_dataseg) ( Addr base, SizeT max_size, UInt prot )
 
    SysRes sres = VG_(am_mmap_anon_fixed_client)( anon_start, anon_size, prot );
    if (! sr_isError(sres)) {
-      NSegment *seg = find_segment(sr_Res(sres));
+      NSegment *seg = ML_(am_find_segment)(sr_Res(sres));
       seg->whatsit = WiClientBreak;
    }
    return sres;
@@ -3029,7 +2309,7 @@ SysRes VG_(am_alloc_extensible_client_stack) ( Addr stack_end, SizeT max_size,
    if (ok) {
       SysRes sres = VG_(am_mmap_anon_fixed_client)(anon_start, anon_size, prot);
       if (! sr_isError(sres)) {
-         NSegment *seg = find_segment(sr_Res(sres));
+         NSegment *seg = ML_(am_find_segment)(sr_Res(sres));
          seg->whatsit = WiClientStack;
       }
       return sres;
@@ -3061,7 +2341,7 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
       return sres;
    }
 
-   const NSegment *anon_seg = next_nsegment(seg, True/*fwds*/);
+   const NSegment *anon_seg = ML_(am_next_segment)(seg, True/*fwds*/);
    aspacem_assert(anon_seg != NULL);
 
    udelta = VG_PGROUNDUP(anon_seg->start - addr);
@@ -3098,7 +2378,7 @@ const NSegment *VG_(am_extend_map_client)( Addr addr, SizeT delta )
       VG_(am_show_nsegments)(0, "VG_(am_extend_map_client) BEFORE");
 
    /* Get the client segment */
-   NSegment *seg = find_segment(addr);
+   NSegment *seg = ML_(am_find_segment)(addr);
 
    aspacem_assert(seg->kind == SkFileC || seg->kind == SkAnonC ||
                   seg->kind == SkShmC);
@@ -3130,13 +2410,13 @@ const NSegment *VG_(am_extend_map_client)( Addr addr, SizeT delta )
 
    NSegment seg_copy = *seg;
    seg_copy.end += delta;
-   add_segment( &seg_copy );
+   ML_(am_add_segment)( &seg_copy );
 
    if (0)
       VG_(am_show_nsegments)(0, "VG_(am_extend_map_client) AFTER");
 
    AM_SANITY_CHECK();
-   return find_segment(addr);
+   return ML_(am_find_segment)(addr);
 }
 
 
@@ -3175,8 +2455,8 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    } else
       return False;
 
-   const NSegment *segLo = find_segment( old_addr );
-   const NSegment *segHi = find_segment( old_addr + old_len - 1 );
+   const NSegment *segLo = ML_(am_find_segment)( old_addr );
+   const NSegment *segHi = ML_(am_find_segment)( old_addr + old_len - 1 );
    if (segLo != segHi)
       return False;
 
@@ -3204,7 +2484,7 @@ Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
    }
    seg.start = new_addr;
    seg.end   = new_addr + new_len - 1;
-   add_segment( &seg );
+   ML_(am_add_segment)( &seg );
 
    /* Create a free hole in the old location. */
    am_notify_munmap( old_addr, old_len );
@@ -3637,8 +2917,8 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
    /* The kernel should not give us wraparounds. */
    aspacem_assert(addr <= addr + len - 1); 
 
-   const NSegment *segLo = find_segment( addr );
-   const NSegment *segHi = find_segment( addr + len - 1 );
+   const NSegment *segLo = ML_(am_find_segment)( addr );
+   const NSegment *segHi = ML_(am_find_segment)( addr + len - 1 );
 
    /* NSegments segLo .. segHi inclusive should agree with the presented
       data. */
@@ -3720,8 +3000,8 @@ static void remove_mapping_callback(Addr addr, SizeT len)
    /* The kernel should not give us wraparounds. */
    aspacem_assert(addr <= addr + len - 1); 
 
-   const NSegment *segLo = find_segment( addr );
-   const NSegment *segHi = find_segment( addr + len - 1 );
+   const NSegment *segLo = ML_(am_find_segment)( addr );
+   const NSegment *segHi = ML_(am_find_segment)( addr + len - 1 );
 
    /* Segments segLo .. segHi inclusive should agree with the
       presented data. */
