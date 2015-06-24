@@ -32,8 +32,6 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux) || defined(VGO_darwin)
-
 /* *************************************************************
    DO NOT INCLUDE ANY OTHER FILES HERE.
    ADD NEW INCLUDES ONLY TO priv_aspacemgr.h
@@ -3067,8 +3065,6 @@ Bool VG_(get_changed_segments)(
 #endif // defined(VGO_darwin)
 
 /*------END-procmaps-parser-for-Darwin---------------------------*/
-
-#endif // defined(VGO_linux) || defined(VGO_darwin)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
