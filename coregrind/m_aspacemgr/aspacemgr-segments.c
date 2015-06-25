@@ -1,10 +1,8 @@
 /* -*- mode: C; c-basic-offset: 3; -*- */
 
 /*--------------------------------------------------------------------*/
-/*--- The address space manager: segment initialisation and        ---*/
-/*--- tracking, stack operations                                   ---*/
-/*---                                                              ---*/
-/*--- Implementation for Linux (and Darwin!)   m_aspacemgr-linux.c ---*/
+/*--- Address space manager segments                               ---*/
+/*---                                         aspacemgr-segments.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
