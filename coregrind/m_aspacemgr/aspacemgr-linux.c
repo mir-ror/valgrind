@@ -2331,7 +2331,7 @@ SysRes VG_(am_extend_client_stack) ( Addr addr, Addr *new_stack_base )
 
    aspacem_assert(seg->kind == SkResvn);
    const NSegment *anon_seg = ML_(am_next_segment)(seg);
-   vg_assert(anon_seg != NULL);
+   aspacem_assert(anon_seg != NULL);
 
    udelta = VG_PGROUNDUP(anon_seg->start - addr);
    *new_stack_base = anon_seg->start - udelta;
