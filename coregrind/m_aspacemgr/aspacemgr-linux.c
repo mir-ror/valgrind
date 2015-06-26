@@ -271,7 +271,6 @@ extern Int      nsegments_used;
 
 /* Limits etc */
 
-
 Addr VG_(clo_aspacem_minAddr)
 #if defined(VGO_darwin)
 # if VG_WORDSIZE == 4
@@ -2921,15 +2920,15 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
    /* NSegments segLo .. segHi inclusive should agree with the presented
       data. */
    for (const NSegment *seg = segLo; seg <= segHi; seg++) {
-
-      UInt seg_prot;
-
-      if (seg->kind == SkAnonV || seg->kind == SkFileV) {
+      switch (seg->kind) {
+      case SkAnonV:
+      case SkFileV:
          /* Ignore V regions */
-         continue;
-      } 
-      else if (seg->kind == SkFree || seg->kind == SkResvn) {
-         /* Add mapping for SkResvn regions */
+         break;
+
+      case SkFree:
+      case SkResvn: {
+         /* Add mapping */
          ChangedSeg* cs = &css_local[css_used_local];
          if (css_used_local < css_size_local) {
             cs->is_added = True;
@@ -2942,15 +2941,15 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
             css_overflowed = True;
          }
          return;
-
       }
-      else if (seg->kind == SkAnonC ||
-               seg->kind == SkFileC ||
-               seg->kind == SkShmC)
-      {
+
+      case SkAnonC:
+      case SkFileC:
+      case SkShmC: {
          /* Check permissions on client regions */
          // GrP fixme
-         seg_prot = 0;
+         UInt seg_prot = 0;
+
          if (seg->hasR) seg_prot |= VKI_PROT_READ;
          if (seg->hasW) seg_prot |= VKI_PROT_WRITE;
 #        if defined(VGA_x86)
@@ -2979,10 +2978,11 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
                css_overflowed = True;
             }
 	    return;
-
          }
+         break;
+      }
 
-      } else {
+      default:
          aspacem_assert(0);
       }
    }
