@@ -163,7 +163,8 @@ void ML_(am_change_permissions)( Addr start, SizeT len, UInt prot );
 void ML_(am_clientise)( Addr start, SizeT len );
 void ML_(am_init_segment)( /*OUT*/NSegment *seg, SegKind kind, Addr start,
                            Addr end);
-const NSegment *ML_(am_next_segment)( const NSegment *here, Bool fwds );
+NSegment *ML_(am_next_segment)( const NSegment *seg );
+NSegment *ML_(am_prev_segment)( const NSegment *seg );
 NSegment *ML_(am_find_segment)( Addr a );
 
 

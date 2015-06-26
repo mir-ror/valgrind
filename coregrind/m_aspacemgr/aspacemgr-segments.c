@@ -58,8 +58,37 @@
 /* I: the segments cover the entire address space precisely. */
 /* Each segment can optionally hold an index into the filename table. */
 
-NSegment nsegments[VG_N_SEGMENTS];
-Int      nsegments_used = 0;
+static NSegment nsegments[VG_N_SEGMENTS];
+static Int      nsegments_used = 0;
+
+
+/*-----------------------------------------------------------------*/
+/*---                                                           ---*/
+/*--- Low level access of segment nodes.                        ---*/
+/*---                                                           ---*/
+/*-----------------------------------------------------------------*/
+
+/* From the ordered collection of segments, return the segment
+   succeeding SEG, or NULL if there is no such segment. */
+NSegment *ML_(am_next_segment)( const NSegment *seg )
+{
+   UInt ix = seg - nsegments;
+   if (ix != nsegments_used - 1)
+      return nsegments + ix + 1;
+
+   return NULL;   // no succeeding segment
+}
+
+/* From the ordered collection of segments, return the segment
+   preceding SEG, or NULL if there is no such segment. */
+NSegment *ML_(am_prev_segment)( const NSegment *seg )
+{
+   UInt ix = seg - nsegments;
+   if (ix != 0)
+      return nsegments + ix - 1;
+
+   return NULL;   // no preceding segment
+}
 
 
 /*-----------------------------------------------------------------*/
@@ -445,23 +474,6 @@ const NSegment *VG_(am_find_nsegment)( Addr a )
    aspacem_assert(a <= seg->end);
 
    return seg->kind == SkFree ? NULL : seg;
-}
-
-/* Find the next segment along from 'here', if it is a non-SkFree segment. */
-const NSegment *ML_(am_next_segment)( const NSegment *here, Bool fwds )
-{
-   const NSegment *next;
-
-   if (fwds) {
-      next = here + 1;
-      if (next >= nsegments + nsegments_used)
-         return NULL;
-   } else {
-      if (here == nsegments)
-         return NULL;
-      next = here - 1;
-   }
-   return (next->kind == SkFree) ? NULL : next;
 }
 
 
