@@ -2049,7 +2049,7 @@ static const NSegment *
 extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
                                          Bool *overflow)
 {
-   NSegment *segA, *segR;
+   const NSegment *segA, *segR;
    UInt   prot;
    SysRes sres;
 
@@ -2097,10 +2097,9 @@ extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
       }
 
       /* Ok, success with the kernel.  Update our structures. */
-      segR->start += delta;
-      segA->end += delta;
-      aspacem_assert(segR->start <= segR->end);
-
+      NSegment seg_copy = *segA;
+      seg_copy.end += delta;
+      ML_(am_add_segment)( &seg_copy );
    } else {
 
       /* Extending the segment backwards. */
@@ -2133,9 +2132,9 @@ extend_into_adjacent_reservation_client (Addr addr, SSizeT delta,
       }
 
       /* Ok, success with the kernel.  Update our structures. */
-      segR->end -= delta;
-      segA->start -= delta;
-      aspacem_assert(segR->start <= segR->end);
+      NSegment seg_copy = *segA;
+      seg_copy.start -= delta;
+      ML_(am_add_segment)( &seg_copy );
    }
 
    AM_SANITY_CHECK();
@@ -2367,7 +2366,7 @@ const NSegment *VG_(am_extend_map_client)( Addr addr, SizeT delta )
       VG_(am_show_nsegments)(0, "VG_(am_extend_map_client) BEFORE");
 
    /* Get the client segment */
-   NSegment *seg = ML_(am_find_segment)(addr);
+   const NSegment *seg = ML_(am_find_segment)(addr);
 
    aspacem_assert(seg->kind == SkFileC || seg->kind == SkAnonC ||
                   seg->kind == SkShmC);
