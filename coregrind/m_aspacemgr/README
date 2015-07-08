@@ -1,0 +1,340 @@
+Previous problem:
+
+Ordered collection of segments was represented with a sorted array.
+Suppose, we hold a pointer 'seg' to some segment like so:
+
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+--
+| 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |   |   |   |   |   |   |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+--
+                          ^
+                          |
+                         seg
+
+Suppose further that memory is allocated which causes segment #4 (a free
+segment) to be split into 2 segments X and Y. This ordered segment array
+now looks like this:
+
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+--
+| 0 | 1 | 2 | 3 | X | Y | 5 | 6 | 7 | 8 |   |   |   |   |   |   |
++---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+--
+                          ^
+                          |
+                         seg
+
+'seg' still points to the same address but the memory contents at that
+address has changed.  OOPS.
+
+The data structure described below attempts to solve the problem above.
+More generally, adding, removing, or splitting a segment X will not
+modify seg unless X == seg.
+
+==========================================================================
+
+Segment tree
+
+1. Definitions
+The segment tree is a binary tree of nodes.
+Let N be a node.
+N is either a leaf node or it has two children L and R.
+Associated with each node is an interval of addresses [f:t] with f <= t.
+This means: a node represents a non-empty interval of addresses from f to t,
+inclusive and without holes.
+Notation shorthand: 
+- We write (N) to denote the interval associated with node N.
+- We write N.L to denote the left subtree of N
+- We write N.R to denote the right subtree of N
+- We write (N).f to denote the "from" address in the interval
+- We write (N).t to denote the "to" address in the interval
+
+We will also use the term "segment" as a synonym for leaf node.
+
+
+1.1 Uniqueness:
+In a given tree no two nodes have the same interval.
+
+1.2 Interval relationship:
+If N is a non-leaf node with (N) = [f:t] then:
+  (N.L) =  [f:x]  with f <= x < t
+  (N.R) =  [x+1:t]
+In other words:
+  (N).f = (N.L).f
+  (N).t = (N.R).t
+
+Note: x < t is needed to satisfy uniqueness. Suppose x = t; it follows that
+(N.L) = [f:t] = (N)  which violates uniqueness.
+
+1.3 Maximally merged:
+A segment tree is called "maximally merged" if there are no two adjacent
+leaves M and N with (M).t + 1 == (N).f  and maybe_merge(M,N) == True
+
+1.4 Coverage
+The segment tree completely covers the available address space.
+Leaf nodes from left to right cover the whole address space without holes.
+
+
+2. Corrolaries
+2.1 Containment:
+The interval of a child node, if any, is contained in the interval of its
+parent. 
+
+2.2 Abutment:
+Let N be a non-leaf node.
+  (N.L).t + 1 = (N.R).f
+This follows directly from 1.2.
+
+
+========================================
+
+3. Tree operations
+
+3.1 Splitting a segment into two (split_segment_at)
+
+A segment is always a leaf node. Splitting a segment N with 
+(N) = [f:t] at an address A with f <= A < t is easy:
+
+     Before split              After split
+
+       [f:t]                     [f:t]
+                                 /    \
+                                /      \
+                             [f:A]   [A+1:t]
+
+
+3.2 Adding a segment to the tree
+
+Let [p:q] be the interval of the segment being added.
+Intuitively, it is clear that adding a segment [p:q] may involve (in the
+general case):
+- splitting an existing segment at p
+- splitting a (possibly different) segment at q+1
+- removing segments [f:t]  when  p <= f && q <= t
+  In other words [f:t] is contained in [p:q]. Those segments will no longer
+  exist.
+- ensuring the tree is maximally merged
+
+For ease of discussion we consider the merging step as a postprocessing
+step.
+
+First, when adding a segment it is not necessary to consider all nodes in
+the tree. Only those whose interval intersects with [p:q] need to be
+considered.
+Therefore:
+
+Step #1
+Locate a node T such that [p:q] is contained in (T) and there is no
+child of T containing [p:q]. There is always such a node. Only nodes rooted
+at T need to be considered.
+
+Special case:  If (T) == [p:q], then remove T and replace it with
+               the segment [p:q]. Done.
+
+General case: Let T be the node identified in step #1 with (T) = [A:D]
+              T is not a leaf. 
+
+                    [A:D]
+                   /     \
+                  /       \
+               [A:x]    [x+1:D]
+
+Here [A:x] and [x+1:D] can be arbitrary subtrees.
+
+We now know that (T.L) = [A:x] contains p and (T.R) = [x+1:D] contains q.
+
+Step #2:  Begin at T.L with (T.L) = [A:x]
+Traverse T.L. The traversal stops at a node with interval [p:...] or at
+a leaf whose interval contains p. Remove all nodes N with (N) contained in
+[p:q] along the way.
+
+Note, that during this traversal we never have to consider whether a left
+subtree of some node could possibly be removed. It cannot. Because:
+for a node N to be removed in this traversal (N).f > p must be true.
+But: a left child and its parent have the same 'from' value. Which means
+if N could be removed we would have already removed its parent and never
+reached N in the first place. It follows that left subtrees do not need
+to be considered for removal.
+
+Step #2a: Special case: A == p.
+Remove tree rooted at [A:x] and add a leaf node with interval [p:x].
+Done with step #2.
+
+Step #2b: [A:x] is a leaf;  here A != p because of #2a
+Split [A:x] at p. Done with step #2.
+
+Step #2c: [A:x] is not a leaf and p > A
+Suppose its right subtree is [B:x].
+
+If B == p, remove [B:x] and replace with a new leaf node [p:x]. Done with
+step #2. 
+
+If B > p, do this:
+
+               [A:D]                     [A:D]
+              /     \                   /     \
+             /       \                 /       \
+          [A:x]    [x+1:D]    ==>   [A:x]    [x+1:D]
+         /     \                   /     \
+        /       \                 /       \
+     [A:B-1]   [B:x]           [A:C]   [C+1:x]
+    /      \
+   /        \
+[A:C]    [C+1:B-1]
+
+I.e.: Remove the child nodes of [A:x], namely [A:B-1] and [B:x], make
+the childs of [A:B-1] to be the new childs of [A:x]. In the right child
+replace B-1 with x.
+In case [A:B-1] is a leaf, split it at p. After that [A:B-1] is no
+longer a leaf and above transformation can be applied.
+Repeat step #2c.
+
+Step #2d: Node [B:x]  with B < p (the remaining case)
+Think of [B:x] as T.L above and go to step #2b.
+
+Step #3: At this point we have transformed
+
+         [A:D]              [A:D]                [A:D]
+        /     \      to    /     \     or to    /     \
+       /       \          /       \            /       \
+    [A:x]   [x+1:D]    [p:x]   [x+1:D]      [A:x]    [x+1:D]
+                                           /     \
+                                          /       \
+                                       ....     subtree
+                                               containing
+                                                 [p:x]
+
+The leaf node [p:x] will be the rightmost leaf in the tree rooted at [A:x].
+The reason is that a node and its right child have the same 'to' value.
+Which means the path from [A:x] to [p:x] is such that we descent from one
+node to the next by going to its right child.
+
+In this step the node [p:x] is moved up the tree by doing the following
+transformation:
+
+              top                         top
+             /   \                       /   \
+            /     \                     /     \
+           l1     r1       ====>       new    r2
+                 /  \                 /   \
+                /    \               /     \
+               l2    r2             l1     l2
+
+Note, that the order of the leaves is the same but r2 has been moved up.
+This transform is repeated until r2 cannot be moved up any further.
+So .... the original tree on the left gets transformed to 
+the tree in the middle or to the tree on the right.
+
+         [A:D]              [A:D]                [A:D]
+        /     \      to    /     \     or to    /     \
+       /       \          /       \            /       \
+    [A:x]   [x+1:D]    [p:x]   [x+1:D]      [A:x]    [x+1:D]
+                                           /     \
+                                          /       \
+                                       ....      [p:x]
+
+
+Step #4: Massage T.R
+This is similar to step #2 and its substeps.
+
+Step #5: At this point we have transformed (ignoring what was done with
+the [A:x] subtree earlier as it is irrelevant here):
+
+         [A:D]              [A:D]                [A:D]
+        /     \      to    /     \     or to    /     \
+       /       \          /       \            /       \
+    [A:x]   [x+1:D]    [A:x]   [x+1:q]      [A:x]    [x+1:D]
+                                                     /     \
+                                                    /       \
+                                                 subtree    ....
+                                               containing
+                                                [x+1:q]
+
+Perform a similar transformation as in step #3:
+
+                top                         top
+               /   \                       /   \
+              /     \                     /     \
+             l1     r1       ====>       l2     new
+            /  \                               /   \
+           /    \                             /     \
+          l2    r2                           r2     r1
+
+Again, order of leaves is the same but l2 has moved up.
+This transform is repeated until l2 cannot be moved up any further.
+So .... the original tree on the left gets transformed to 
+the tree in the middle or to the tree on the right.
+
+         [A:D]              [A:D]                [A:D]
+        /     \      to    /     \     or to    /     \
+       /       \          /       \            /       \
+    [A:x]   [x+1:D]    [A:x]   [x+1:q]      [A:x]    [x+1:D]
+                                                     /     \
+                                                    /       \
+                                                [x+1:q]    ....
+
+Step #6:
+The tree can take one of the following 4 shapes:
+
+ (1)         (2)                     (3)                   (4)
+[p:q]       [p:D]                   [A:q]                 [A:D]
+           /     \                 /     \               /     \
+          /       \               /       \             /       \
+       [p:x]   [x+1:D]         [A:x]   [x+1:q]      [A:x]      [x+1:D]
+              /      \        /     \              /    \      /     \
+             /        \      /       \            /      \    /       \
+          [x+1:q] [q+1:D]  [A:p-1] [p:x]       [A:p-1] [p:x] [x+1:q] [q+1:D]
+
+Those get transformed to:
+
+ (1)         (2)                    (3)                   (4)
+[p:q]       [p:D]                  [A:q]                 [A:D]
+           /     \                /     \               /     \
+          /       \              /       \             /       \
+       [p:q]   [q+1:D]       [A:p-1]    [p:q]       [A:x]      [q+1:D]
+                                                   /    \      
+                                                  /      \ 
+                                               [A:p-1]  [p:q]
+                                          
+
+4. Ensuring the "Maximally Merged" Property
+
+TO BE DONE
+
+In the beginning the segment tree is a single leaf node covering the whole
+address space. As nodes get added and split we need to make sure that the
+segment tree stays maximally merged.
+
+For the sake of this discussion and without loss of generality we assume
+that a "node kind" is associated with each node. We also assume a function
+"maybe_merge" that decides whether or not two nodes maybe merged.
+The function is defined as follows:
+(a) The function takes two leaf nodes N1 and N2 as arguments.
+(b) If the two leaf nodes have different node kinds, the function 
+    returns false.
+(c) If (N1) and (N2) do not abut, the function returns false.
+(d) Otherwise, the function returns true.
+
+Associated with each node is some kind of informa
+4.1 Splitting a node
+
+
+
+
+Merging two nodes
+The necessary condition for two nodes to be merged is that their address
+intervals abut. The sufficient condition is that the function 'meybe_merge'
+returns true.
+Let 'prev' and 'cur' be two such segments (necessary and sufficient conditions
+are satisfied). Also: (prev).t + 1 = (cur).f
+
+Case 1: prev and cur have the same parent.
+This means that prev is the left child and cur is the right child of
+their parent. Replace the parent with a leaf node [(prev).f:(cur).t]
+
+Case 2: prev and cur do not have the same parent.
+This means that prev is the right child of some node and cur is the left
+child of some node.
+Begin with prev.
+
+for (node = prev; node == node->up->right; node = node->up)
+   continue;
+
+When that loop terminates 'node' is the common ancestor of 'prev' and 'cur'.

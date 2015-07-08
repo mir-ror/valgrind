@@ -1,0 +1,81 @@
+#!/bin/sh
+
+EXE=../unit-test
+
+runone() {
+file=$1
+$EXE $file -i $2
+result="$1-i$2.dot"
+diff $result golden/$result > /dev/null
+if [ $? = 0 ]; then
+   echo $file -i $2 PASS
+   rm $result
+else
+   echo $file -i $2 FAIL    !!!!!!!!!!
+fi
+}
+
+runone l1 0:30
+runone l1 0:50
+runone l1 0:60
+runone l1 20:50
+runone l1 30:40
+runone l1 30:80
+runone l1 30:100
+
+runone l2 25:50
+runone l2 31:50
+
+runone r1 51:80
+runone r1 51:100
+runone r1 70:100
+runone r1 60:80
+
+runone r2 0:10
+runone r2 0:50
+runone r2 10:100
+runone r2 51:100
+runone r2 10:50
+runone r2 10:60
+runone r2 20:30
+runone r2 10:20
+runone r2 40:50
+
+runone root 0:20
+runone root 40:50
+runone root 80:100
+
+runone big 0:27
+runone big 0:28
+runone big 0:31
+runone big 0:32
+runone big 0:50
+runone big 1:50
+runone big 1:54 
+runone big 1:60
+runone big 1:61
+runone big 2:27
+runone big 3:6
+runone big 3:27
+runone big 4:21
+runone big 5:22
+runone big 5:25
+runone big 6:18
+runone big 6:19
+runone big 6:27
+runone big 7:24
+runone big 7:27
+runone big 8:49
+runone big 9:30
+runone big 14:16
+runone big 15:45
+runone big 15:60
+runone big 15:61
+runone big 17:24
+runone big 19:41
+runone big 30:60
+runone big 31:32
+runone big 32:58
+runone big 32:61
+runone big 38:46
+runone big 39:46

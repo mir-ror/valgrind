@@ -167,6 +167,7 @@ NSegment *ML_(am_next_segment)( const NSegment *seg );
 NSegment *ML_(am_prev_segment)( const NSegment *seg );
 NSegment *ML_(am_find_segment)( Addr a );
 
+void ML_(am_write_dot)(const NSegment *node, const char *name);
 
 #define Addr_MIN ((Addr)0)
 #define Addr_MAX ((Addr)(-1ULL))

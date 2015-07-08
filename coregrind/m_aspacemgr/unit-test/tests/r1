@@ -1,0 +1,4 @@
+# Simple tree; root + 2 children
+0:100
+0:100 -> 0:50
+0:100 -> 51:100

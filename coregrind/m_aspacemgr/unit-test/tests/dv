@@ -1,0 +1,16 @@
+#!/bin/sh 
+#
+# Simple script to show a .dot file.
+# Requires "dot" and "gv" on $PATH
+#
+dir=`dirname $1`
+base=`basename $1 .dot`
+dotfile="$dir/$base.dot"
+psfile="$dir/$base.ps"
+#echo $dir
+#echo $base
+#echo $dotfile
+#echo $psfile
+dot -Tps $dotfile > $psfile
+gv $psfile
+rm -f $psfile

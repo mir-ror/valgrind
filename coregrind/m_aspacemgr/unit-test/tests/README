@@ -1,0 +1,18 @@
+Use  ./runtest  to run the tests.
+The output is self-explanatory.
+
+Each test reads a segment tree from a file and inserts a segment.
+The segment tree after insertion is written out as a ".dot" file
+which can be visualised with the "dv" script included in this
+directory.
+
+To run a test by hand, e.g.
+
+./unit-test big -i 15:45
+
+Here "big" is a file containing a segment tree.
+This will create big-i15:45.dot and you can look at it like so:
+
+./dv big-i15:45.dot
+
+You can also omit the .dot suffix.
