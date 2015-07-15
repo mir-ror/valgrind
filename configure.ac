@@ -2991,6 +2991,7 @@ AC_CONFIG_FILES([
    auxprogs/Makefile
    mpi/Makefile
    coregrind/Makefile 
+   coregrind/m_aspacemgr/unit-test/Makefile 
    memcheck/Makefile
    memcheck/tests/Makefile
    memcheck/tests/common/Makefile

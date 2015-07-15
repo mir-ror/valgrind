@@ -30,6 +30,7 @@ SUBDIRS = \
 	perf \
 	gdbserver_tests \
 	memcheck/tests/vbit-test \
+	coregrind/m_aspacemgr/unit-test \
 	auxprogs \
 	mpi \
 	docs

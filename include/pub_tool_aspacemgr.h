@@ -103,7 +103,7 @@ typedef
            (viz, not allowed to make translations from non-client areas)
 */
 typedef
-   struct {
+   struct NSegment {
       SegKind kind;
       /* Extent (SkFree, SkAnon{C,V}, SkFile{C,V}, SkResvn) */
       Addr    start;    // lowest address in range
@@ -124,6 +124,10 @@ typedef
                         // been taken from this segment
       /* Identifies what this segment is part of */
       WhatsIt whatsit;
+      /* Tree structure. */
+      struct NSegment *left;
+      struct NSegment *right;
+      struct NSegment *up;
    }
    NSegment;
 
