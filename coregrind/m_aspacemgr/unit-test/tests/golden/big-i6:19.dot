@@ -13,7 +13,7 @@ N_5_25[label="5:25"];
 N_5_22[label="5:22"];
 N_5_19[label="5:19"][style="filled"][fillcolor="grey"];
 N_5_5[label="5:5"];
-N_6_19[label="6:19"];
+N_6_19[label="6:19"][style="filled"][fillcolor="yellow"];
 N_20_22[label="20:22"];
 N_23_25[label="23:25"];
 N_26_28[label="26:28"];

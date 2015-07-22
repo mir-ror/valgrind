@@ -4,7 +4,7 @@ digraph "l2-i25:50" {
 
 N_20_50[label="20:50"][style="filled"][fillcolor="grey"];
 N_20_24[label="20:24"];
-N_25_50[label="25:50"];
+N_25_50[label="25:50"][style="filled"][fillcolor="yellow"];
 
 /* Edges */
 

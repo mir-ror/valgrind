@@ -11,7 +11,7 @@ N_0_4[label="0:4"];
 N_0_2[label="0:2"];
 N_3_4[label="3:4"];
 N_5_5[label="5:5"];
-N_6_27[label="6:27"];
+N_6_27[label="6:27"][style="filled"][fillcolor="yellow"];
 N_28_28[label="28:28"];
 N_29_31[label="29:31"];
 N_32_61[label="32:61"];

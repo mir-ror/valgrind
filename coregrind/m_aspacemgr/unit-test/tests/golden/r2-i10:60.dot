@@ -5,7 +5,7 @@ digraph "r2-i10:60" {
 N_0_100[label="0:100"];
 N_0_9[label="0:9"];
 N_10_100[label="10:100"][style="filled"][fillcolor="grey"];
-N_10_60[label="10:60"];
+N_10_60[label="10:60"][style="filled"][fillcolor="yellow"];
 N_61_100[label="61:100"];
 
 /* Edges */

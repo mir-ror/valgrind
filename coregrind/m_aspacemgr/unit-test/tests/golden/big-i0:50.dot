@@ -3,7 +3,7 @@ digraph "big-i0:50" {
 /* Nodes */
 
 N_0_61[label="0:61"][style="filled"][fillcolor="grey"];
-N_0_50[label="0:50"];
+N_0_50[label="0:50"][style="filled"][fillcolor="yellow"];
 N_51_61[label="51:61"];
 N_51_52[label="51:52"];
 N_53_61[label="53:61"];

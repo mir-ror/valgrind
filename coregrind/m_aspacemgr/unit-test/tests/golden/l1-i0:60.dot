@@ -3,7 +3,7 @@ digraph "l1-i0:60" {
 /* Nodes */
 
 N_0_100[label="0:100"][style="filled"][fillcolor="grey"];
-N_0_60[label="0:60"];
+N_0_60[label="0:60"][style="filled"][fillcolor="yellow"];
 N_61_100[label="61:100"];
 
 /* Edges */

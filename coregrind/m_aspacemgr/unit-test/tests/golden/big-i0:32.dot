@@ -3,7 +3,7 @@ digraph "big-i0:32" {
 /* Nodes */
 
 N_0_61[label="0:61"][style="filled"][fillcolor="grey"];
-N_0_32[label="0:32"];
+N_0_32[label="0:32"][style="filled"][fillcolor="yellow"];
 N_33_61[label="33:61"];
 N_33_34[label="33:34"];
 N_35_61[label="35:61"];

@@ -18,7 +18,7 @@ N_8_10[label="8:10"];
 N_11_19[label="11:19"];
 N_11_13[label="11:13"];
 N_14_19[label="14:19"];
-N_14_16[label="14:16"];
+N_14_16[label="14:16"][style="filled"][fillcolor="yellow"];
 N_17_19[label="17:19"];
 N_20_22[label="20:22"];
 N_23_25[label="23:25"];

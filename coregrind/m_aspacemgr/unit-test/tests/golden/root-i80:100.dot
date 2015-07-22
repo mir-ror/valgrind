@@ -4,7 +4,7 @@ digraph "root-i80:100" {
 
 N_0_100[label="0:100"][style="filled"][fillcolor="grey"];
 N_0_79[label="0:79"];
-N_80_100[label="80:100"];
+N_80_100[label="80:100"][style="filled"][fillcolor="yellow"];
 
 /* Edges */
 

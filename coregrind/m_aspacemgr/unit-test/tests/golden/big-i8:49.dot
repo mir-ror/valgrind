@@ -9,7 +9,7 @@ N_0_4[label="0:4"];
 N_0_2[label="0:2"];
 N_3_4[label="3:4"];
 N_5_7[label="5:7"];
-N_8_49[label="8:49"];
+N_8_49[label="8:49"][style="filled"][fillcolor="yellow"];
 N_50_61[label="50:61"];
 N_50_52[label="50:52"];
 N_53_61[label="53:61"];

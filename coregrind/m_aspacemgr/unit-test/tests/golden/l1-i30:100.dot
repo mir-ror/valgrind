@@ -4,7 +4,7 @@ digraph "l1-i30:100" {
 
 N_0_100[label="0:100"][style="filled"][fillcolor="grey"];
 N_0_29[label="0:29"];
-N_30_100[label="30:100"];
+N_30_100[label="30:100"][style="filled"][fillcolor="yellow"];
 
 /* Edges */
 

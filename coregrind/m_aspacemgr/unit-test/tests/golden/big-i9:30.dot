@@ -12,7 +12,7 @@ N_0_2[label="0:2"];
 N_3_4[label="3:4"];
 N_5_7[label="5:7"];
 N_8_8[label="8:8"];
-N_9_30[label="9:30"];
+N_9_30[label="9:30"][style="filled"][fillcolor="yellow"];
 N_31_31[label="31:31"];
 N_32_61[label="32:61"];
 N_32_58[label="32:58"];

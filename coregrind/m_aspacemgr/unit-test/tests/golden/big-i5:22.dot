@@ -10,7 +10,7 @@ N_0_2[label="0:2"];
 N_3_25[label="3:25"];
 N_3_4[label="3:4"];
 N_5_25[label="5:25"];
-N_5_22[label="5:22"];
+N_5_22[label="5:22"][style="filled"][fillcolor="yellow"];
 N_23_25[label="23:25"];
 N_26_28[label="26:28"];
 N_29_31[label="29:31"];

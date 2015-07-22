@@ -7,7 +7,7 @@ N_0_50[label="0:50"];
 N_51_100[label="51:100"][style="filled"][fillcolor="grey"];
 N_51_59[label="51:59"];
 N_60_100[label="60:100"];
-N_60_80[label="60:80"];
+N_60_80[label="60:80"][style="filled"][fillcolor="yellow"];
 N_81_100[label="81:100"];
 
 /* Edges */

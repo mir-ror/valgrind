@@ -6,7 +6,7 @@ N_0_100[label="0:100"];
 N_0_9[label="0:9"];
 N_10_100[label="10:100"];
 N_10_50[label="10:50"][style="filled"][fillcolor="grey"];
-N_10_20[label="10:20"];
+N_10_20[label="10:20"][style="filled"][fillcolor="yellow"];
 N_21_50[label="21:50"];
 N_51_100[label="51:100"];
 

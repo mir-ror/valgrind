@@ -88,12 +88,11 @@ write_node(FILE *fp, const NSegment *node)
       style = "filled";
       fill_color = "grey";
    }
-#if 0
    if (node == inserted_node) {
       style = "filled";
       fill_color = "yellow";
    }
-#endif
+
    static char label[100];  // large enough
    sprintf(label, "%ld:%ld", node->start, node->end);
    write_node_aux(fp, node, label, color, shape,

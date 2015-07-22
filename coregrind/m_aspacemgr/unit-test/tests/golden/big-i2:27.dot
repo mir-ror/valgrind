@@ -7,7 +7,7 @@ N_0_31[label="0:31"];
 N_0_28[label="0:28"][style="filled"][fillcolor="grey"];
 N_0_27[label="0:27"];
 N_0_1[label="0:1"];
-N_2_27[label="2:27"];
+N_2_27[label="2:27"][style="filled"][fillcolor="yellow"];
 N_28_28[label="28:28"];
 N_29_31[label="29:31"];
 N_32_61[label="32:61"];

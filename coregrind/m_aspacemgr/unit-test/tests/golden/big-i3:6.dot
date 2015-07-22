@@ -8,7 +8,7 @@ N_0_28[label="0:28"];
 N_0_25[label="0:25"];
 N_0_2[label="0:2"];
 N_3_25[label="3:25"][style="filled"][fillcolor="grey"];
-N_3_6[label="3:6"];
+N_3_6[label="3:6"][style="filled"][fillcolor="yellow"];
 N_7_25[label="7:25"];
 N_7_7[label="7:7"];
 N_8_25[label="8:25"];

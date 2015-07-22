@@ -4,7 +4,7 @@ digraph "big-i1:61" {
 
 N_0_61[label="0:61"][style="filled"][fillcolor="grey"];
 N_0_0[label="0:0"];
-N_1_61[label="1:61"];
+N_1_61[label="1:61"][style="filled"][fillcolor="yellow"];
 
 /* Edges */
 

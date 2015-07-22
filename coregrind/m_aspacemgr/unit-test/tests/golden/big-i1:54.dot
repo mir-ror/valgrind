@@ -5,7 +5,7 @@ digraph "big-i1:54" {
 N_0_61[label="0:61"][style="filled"][fillcolor="grey"];
 N_0_54[label="0:54"];
 N_0_0[label="0:0"];
-N_1_54[label="1:54"];
+N_1_54[label="1:54"][style="filled"][fillcolor="yellow"];
 N_55_61[label="55:61"];
 N_55_55[label="55:55"];
 N_56_61[label="56:61"];

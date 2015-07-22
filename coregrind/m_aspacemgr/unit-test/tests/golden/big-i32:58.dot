@@ -25,7 +25,7 @@ N_23_25[label="23:25"];
 N_26_28[label="26:28"];
 N_29_31[label="29:31"];
 N_32_61[label="32:61"];
-N_32_58[label="32:58"];
+N_32_58[label="32:58"][style="filled"][fillcolor="yellow"];
 N_59_61[label="59:61"];
 
 /* Edges */

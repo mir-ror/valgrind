@@ -3,7 +3,7 @@ digraph "r2-i0:10" {
 /* Nodes */
 
 N_0_100[label="0:100"][style="filled"][fillcolor="grey"];
-N_0_10[label="0:10"];
+N_0_10[label="0:10"][style="filled"][fillcolor="yellow"];
 N_11_100[label="11:100"];
 N_11_50[label="11:50"];
 N_51_100[label="51:100"];
