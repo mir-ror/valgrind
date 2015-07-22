@@ -125,6 +125,8 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
 extern
 Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf );
 
+void ML_(am_show_len_concisely)( /*OUT*/HChar *buf, Addr start, Addr end );
+
 /* ------ Implemented separately in aspacemgr-linux.c ------ */
 
 /* Do a sanity check (/proc/self/maps sync check) */
@@ -157,7 +159,6 @@ Int ML_(am_segname_get_seqnr)(Int fnIdx);
 /* ------ Implemented in aspacemgr-segments.c ------ */
 void ML_(am_segments_init)( void );
 void ML_(am_add_segment)( const NSegment *seg );
-void ML_(am_show_len_concisely)( /*OUT*/HChar *buf, Addr start, Addr end );
 void ML_(am_show_segment_full)( Int logLevel, Int segNo, const NSegment *seg );
 void ML_(am_change_permissions)( Addr start, SizeT len, UInt prot );
 void ML_(am_clientise)( Addr start, SizeT len );
