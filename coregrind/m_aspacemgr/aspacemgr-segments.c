@@ -685,7 +685,7 @@ static void delete_node( NSegment *node )
    ML_(am_dec_refcount)(node->fnIdx);
 
    /* Chain into freelist */
-   node->left = node->right = NULL;
+   node->left = node->right = node->up = NULL;
    node->fnIdx = ON_FREELIST;
    node->left = segment_freelist;
    segment_freelist = node;
