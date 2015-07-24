@@ -348,6 +348,8 @@ static Bool sane_segment ( const NSegment *s )
       if (s->left == NULL) return False;
       /* Both subtrees != NULL */
       if (s->left == s->right) return False;
+      if (s->left == s->up) return False;
+      if (s->right == s->up) return False;
       /* Check address range containment */
       if (s->start != s->left->start) return False;
       if (s->end   != s->right->end)  return False;
@@ -356,7 +358,6 @@ static Bool sane_segment ( const NSegment *s )
    }
 
    switch (s->kind) {
-
       case SkFree:
          return 
             s->smode == SmFixed
@@ -422,7 +423,6 @@ static Bool maybe_merge_segments( NSegment *s1, const NSegment *s2 )
       return False;
 
    switch (s1->kind) {
-
       case SkFree:
          s1->end = s2->end;
          return True;
