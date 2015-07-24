@@ -661,7 +661,6 @@ new_leaf( NSegment *parent, SegKind kind, const Addr from, const Addr to )
 }
 
 /* Clone a segment. This creates a new leaf node. */
-
 static NSegment *clone_segment( const NSegment *seg )
 {
    aspacem_assert(is_leaf(seg));
@@ -671,6 +670,7 @@ static NSegment *clone_segment( const NSegment *seg )
    NSegment *new = new_node();
 
    *new = *seg;
+   new->left = new->right = new->up = NULL;
 
    ML_(am_inc_refcount)(seg->fnIdx);
 
