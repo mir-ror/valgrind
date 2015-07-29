@@ -579,6 +579,7 @@ NSegment *ML_(am_find_segment)( Addr a )
 
    if ((a >> 12) == cache_pageno[ix]
        && cache_seg[ix] != NULL
+       && cache_seg[ix]->fnIdx != ON_FREELIST
        && is_leaf(cache_seg[ix])
        && cache_seg[ix]->start <= a
        && a <= cache_seg[ix]->end) {
