@@ -515,8 +515,8 @@ const HChar *VG_(am_get_filename)( const NSegment *seg )
    return ML_(am_get_segname)( seg->fnIdx );
 }
 
-/* Binary search the interval array for a given address.  Since the
-   array covers the entire address space the search cannot fail.  The
+/* Binary search the segment tree for a given address.  Since the
+   tree covers the entire address space the search cannot fail.  The
    _WRK function does the real work.  Its caller (just below) caches
    the results thereof, to save time.  With N_CACHE of 63 we get a hit
    rate exceeding 90% when running OpenOffice.
@@ -548,6 +548,7 @@ static NSegment *find_segment_WRK( Addr a )
    }
 }
 
+/* This function never returns NULL */
 NSegment *ML_(am_find_segment)( Addr a )
 {
 #  define N_CACHE 131 /*prime*/
@@ -761,7 +762,6 @@ static void split_segment_at( Addr a )
    sLo is the first address denoted by some segment and sHi is the
    highest address denoted by some other segment.  Returns the indices
    of the lowest and highest segments in the range. */
-
 static void split_segments_lo_and_hi( Addr sLo, Addr sHi,
                                       /*OUT*/NSegment **segLo,
                                       /*OUT*/NSegment **segHi )
@@ -783,10 +783,6 @@ static void split_segments_lo_and_hi( Addr sLo, Addr sHi,
    /* Not that I'm overly paranoid or anything, definitely not :-) */
 }
 
-
-/* Add SEG to the collection, deleting/truncating any it overlaps.
-   This deals with all the tricky cases of splitting up segments as
-   needed. */
 
 /* Locate the subtree X containing the interval [from:to] such that no
    subtree of X contains [from:to]. This function never returns NULL. */
@@ -1127,7 +1123,7 @@ insert_node(Addr from, Addr to)
    if (nopost) return subtree;  // return values does not matter
 #endif
 
-   DEBUG("\nPOST PROCESSING\n");
+   DEBUG("POST PROCESSING\n");
    // It cannot be that both children of the subtree are leaves. 
    // Assume both children L and R are leaves with (L) = [p,x] and
    // (R) = [x+1,q]. As L needs to contain a node [from,...] it follows
@@ -1210,6 +1206,9 @@ insert_node(Addr from, Addr to)
    }
 }
 
+/* Add SEG to the collection, deleting/truncating any it overlaps.
+   This deals with all the tricky cases of splitting up segments as
+   needed. */
 void ML_(am_add_segment)( const NSegment *seg )
 {
    DEBUG("adding segment "INTERVAL_FMT"\n", seg->start, seg->end);
