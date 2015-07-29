@@ -1938,7 +1938,6 @@ SysRes VG_(am_munmap_valgrind)( Addr start, SizeT len )
   segment (anon or file).  Change the ownership of [start, start+len)
   to the client instead.  Fails if (start,len) does not denote a
   suitable segment. */
-
 Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
 {
    if (len == 0)
@@ -1948,17 +1947,7 @@ Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len )
    if (!VG_IS_PAGE_ALIGNED(start) || !VG_IS_PAGE_ALIGNED(len))
       return False;
 
-   const NSegment *seg = ML_(am_find_segment)(start);
-   if (seg->kind != SkFileV && seg->kind != SkAnonV)
-      return False;
-   if (start+len-1 > seg->end)
-      return False;
-
-   aspacem_assert(start >= seg->start);
-   aspacem_assert(start+len-1 <= seg->end);
-
-   ML_(am_clientise)( start, len );
-   return True;
+   return ML_(am_clientise)( start, len );
 }
 
 /* Set the 'hasT' bit on the segment containing ADDR indicating that

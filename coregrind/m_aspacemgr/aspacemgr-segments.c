@@ -1354,24 +1354,32 @@ void ML_(am_change_permissions)( Addr start, SizeT len, UInt prot )
    if (expensive_checking) check_tree(root_segment());
 }
 
-/* Change ownership of valgrind address space [addr:addr+len-1] to client. */
-void ML_(am_clientise)( Addr start, SizeT len )
+/* Change ownership of valgrind address space [addr:addr+len-1] to client.
+   The address range is supposed to be located in a single segment. If that
+   is not so, return False. */
+Bool ML_(am_clientise)( Addr start, SizeT len )
 {
-   NSegment *segLo, *segHi;
+   const NSegment *seg = ML_(am_find_segment)(start);
 
-   split_segments_lo_and_hi( start, start + len - 1, &segLo, &segHi );
-   aspacem_assert(segLo == segHi);
+   if (seg->kind != SkFileV && seg->kind != SkAnonV)
+      return False;
+   if (start + len - 1 > seg->end)
+      return False;
 
-   switch (segLo->kind) {
-      case SkFileV: segLo->kind = SkFileC; break;
-      case SkAnonV: segLo->kind = SkAnonC; break;
+   /* OK. SEG is a segment of the appropriate kind. Set up a template
+      segment with the corresponding client kind and insert that. Function
+      ML_(am_add_segment) will take care of everything. */
+   NSegment tmp = *seg;
+
+   switch (seg->kind) {
+      case SkFileV: tmp.kind = SkFileC; break;
+      case SkAnonV: tmp.kind = SkAnonC; break;
       default: aspacem_assert(0); /* can't happen - guarded above */
    }
 
-   /* Changing permissions could have made previously un-mergable
-      segments mergeable.  Therefore have to re-preen them. */
-   //   preen_segments();
-   if (expensive_checking) check_tree(root_segment());
+   ML_(am_add_segment)(&tmp);
+
+   return True;
 }
 
 /*--------------------------------------------------------------------*/

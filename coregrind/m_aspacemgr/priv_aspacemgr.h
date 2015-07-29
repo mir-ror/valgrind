@@ -161,7 +161,7 @@ void ML_(am_segments_init)( void );
 void ML_(am_add_segment)( const NSegment *seg );
 void ML_(am_show_segment_full)( Int logLevel, Int segNo, const NSegment *seg );
 void ML_(am_change_permissions)( Addr start, SizeT len, UInt prot );
-void ML_(am_clientise)( Addr start, SizeT len );
+Bool ML_(am_clientise)( Addr start, SizeT len );
 void ML_(am_init_segment)( /*OUT*/NSegment *seg, SegKind kind, Addr start,
                            Addr end);
 NSegment *ML_(am_next_segment)( const NSegment *seg );
