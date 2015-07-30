@@ -27,7 +27,7 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "pub_tool_aspacemgr.h"    // NSegment
+#include "pub_core_aspacemgr.h"    // NSegment
 
 NSegment *read_file(const char *file);
 void write_dot(const NSegment *, const NSegment *subtree,
