@@ -31,6 +31,19 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+/* At any point in time the segment tree is "maximally merged". That
+   means: there are no two leaf nodes x and y with adjacent address ranges
+   such that maybe_merge(x, y) is true.
+
+   Instead of adding a segment and having a post-pass to maximally merge
+   them, we do the following:
+   Let S = (m:n) be the segment to be inserted. Locate the segments
+   P = (x:m-1) and N = (n+1:y), i.e. the two segments next to S.
+   If maybe_merge(P,S) == true, set (S).f = x.
+   If maybe_merge(S,N) == true, set (S).t = y.
+   Now insert S. The segment tree will be maximally merged afterwards.
+*/
+
 #include "priv_aspacemgr.h"
 
 #ifdef ASPACEMGR_UNIT_TEST
@@ -43,11 +56,13 @@
 
 static Bool norotate = False;
 static Bool nopost = False;
+static const Bool merge = False;
 #else
 
 #define INTERVAL_FMT "[%lx:%lx]"
 #define ADDR_FMT "%lx"
 
+static const Bool merge = True;
 #endif
 
 /* Max number of segments we can track.  On Android, virtual address
@@ -1214,9 +1229,34 @@ void ML_(am_add_segment)( const NSegment *seg )
 {
    DEBUG("adding segment "INTERVAL_FMT"\n", seg->start, seg->end);
 
-   NSegment *new = insert_node(seg->start, seg->end);
+   NSegment this = *seg;
 
-   aspacem_assert(new->start == seg->start && new->end == seg->end);
+   /* Check whether THIS can be merged with the neighbouring segments.
+      This is disabled in unit test mode. */
+   if (merge) {
+      if (this.start != Addr_MIN) {
+         const NSegment *prev = ML_(am_find_segment)(this.start - 1);
+         NSegment tmp = *prev;
+         if (maybe_merge_segments(&tmp, &this)) {
+            DEBUG("merging "INTERVAL_FMT" "INTERVAL_FMT"\n",
+                  prev->start, prev->end, this.start, this.end);
+            this = tmp;
+         }
+      }
+      if (this.end != Addr_MAX) {
+         const NSegment *next = ML_(am_find_segment)(this.end + 1);
+         NSegment tmp = this;
+         if (maybe_merge_segments(&tmp, next))
+            DEBUG("merging "INTERVAL_FMT" "INTERVAL_FMT"\n",
+                  this.start, this.end, next->start, next->end);
+         this = tmp;
+      }
+      DEBUG("inserting segment "INTERVAL_FMT"\n", this.start, this.end);
+   }
+
+   NSegment *new = insert_node(this.start, this.end);
+
+   aspacem_assert(new->start == this.start && new->end == this.end);
 
    /* Initialise the new segment with the template segment, but be careful
       not to overwrite the left, right, and up links. */
@@ -1224,7 +1264,7 @@ void ML_(am_add_segment)( const NSegment *seg )
    NSegment *right = new->right;
    NSegment *up = new->up;
 
-   *new = *seg;
+   *new = this;
    new->up = up;
    new->left = left;
    new->right = right;
