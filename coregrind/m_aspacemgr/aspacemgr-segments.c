@@ -1415,6 +1415,8 @@ Bool ML_(am_clientise)( Addr start, SizeT len )
       ML_(am_add_segment) will take care of everything. */
    NSegment tmp = *seg;
 
+   tmp.start = start;
+   tmp.end   = start + len - 1;
    switch (seg->kind) {
       case SkFileV: tmp.kind = SkFileC; break;
       case SkAnonV: tmp.kind = SkAnonC; break;
