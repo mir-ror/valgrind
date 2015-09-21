@@ -39,7 +39,13 @@
    ************************************************************* */
 
 #include "priv_aspacemgr.h"
-#include "config.h"
+#include "pub_core_libcbase.h"   // VG_(strcmp), etc
+#include "pub_core_vki.h"        // VKI_PROT_EXEC, etc.
+#include "pub_core_debuglog.h"   // VG_(debugLog)
+#include "pub_core_options.h"    // VG_(clo_sanity_level)
+#include "pub_core_syscall.h"    // SysRes
+#include "config.h"              // HAVE_REMAP
+
 
 /*-----------------------------------------------------------------*/
 /*---                                                           ---*/
@@ -559,29 +565,22 @@ static void sync_check_gap_callback ( Addr addr, SizeT len )
    a discrepancy is detected, but does not abort the system.  Returned
    Bool is False if a discrepancy was found. */
 
-Bool VG_(am_do_sync_check) ( const HChar* fn, 
-                             const HChar* file, Int line )
+Bool VG_(am_do_sync_check)( const HChar* fn, const HChar* file, Int line )
 {
    sync_check_ok = True;
-   if (0)
-      VG_(debugLog)(0,"aspacem", "do_sync_check %s:%d\n", file,line);
-   parse_procselfmaps( sync_check_mapping_callback,
-                       sync_check_gap_callback );
+   parse_procselfmaps( sync_check_mapping_callback, sync_check_gap_callback );
+
    if (!sync_check_ok) {
-      VG_(debugLog)(0,"aspacem", 
-                      "sync check at %s:%d (%s): FAILED\n",
+      VG_(debugLog)(0,"aspacem", "do_sync_check at %s:%d (%s): FAILED\n",
                       file, line, fn);
       VG_(debugLog)(0,"aspacem", "\n");
 
 #     if 0
-      {
-         HChar buf[100];   // large enough
-         VG_(am_show_nsegments)(0,"post syncheck failure");
-         VG_(sprintf)(buf, "/bin/cat /proc/%d/maps", VG_(getpid)());
-         VG_(system)(buf);
-      }
+      HChar buf[100];   // large enough
+      VG_(am_show_nsegments)(0, "post do_sync_check failure");
+      ML_(am_sprintf)(buf, "/bin/cat /proc/%d/maps", ML_(am_getpid)());
+      VG_(system)(buf);
 #     endif
-
    }
    return sync_check_ok;
 }

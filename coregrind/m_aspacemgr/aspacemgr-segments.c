@@ -45,6 +45,10 @@
 */
 
 #include "priv_aspacemgr.h"
+#include "pub_core_vki.h"        // VKI_PAGE_SIZE
+#include "pub_core_libcbase.h"   // VG_IS_PAGE_ALIGNED
+#include "pub_core_debuglog.h"   // VG_(debugLog)
+
 
 #ifdef ASPACEMGR_UNIT_TEST
 /* Remove the alignment test so we can have segments with intervals that

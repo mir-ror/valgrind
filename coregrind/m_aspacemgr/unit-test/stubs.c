@@ -30,6 +30,7 @@
 #include "pub_core_libcbase.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_libcassert.h"
+#include "pub_core_syscall.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -180,7 +181,7 @@ SysRes ML_(am_open)( const HChar *pathname, Int flags, Int mode )
    return (SysRes){};
 }
 
-Int ML_(am_read)( Int fd, void* buf, Int count )
+Int ML_(am_read)( Int fd, void* buf, SizeT count )
 {
    assert(0);
    return 1;
@@ -201,7 +202,7 @@ UInt ML_(am_sprintf)( HChar *buf, const HChar *format, ... )
    assert(0);
 }
 
-Bool ML_(am_resolve_filename)( Int fd, /*OUT*/HChar *buf, Int nbuf )
+Bool ML_(am_resolve_filename)( Int fd, /*OUT*/HChar *buf, SizeT nbuf )
 {
    assert(0);
    return 1;

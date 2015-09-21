@@ -114,8 +114,11 @@
    So we leave it as is until a use case comes up that needs something better.
 */
 
-#include "pub_core_basics.h"     // types
 #include "priv_aspacemgr.h"
+#include "pub_core_basics.h"     // types
+#include "pub_core_libcbase.h"   // VG_(strlen)
+#include "pub_core_debuglog.h"   // VG_(debugLog)
+
 
 // A few constants.
 enum {

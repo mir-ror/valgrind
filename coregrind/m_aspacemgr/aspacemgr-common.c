@@ -37,7 +37,14 @@
    ************************************************************* */
 
 #include "priv_aspacemgr.h"
-#include "config.h"
+#include "pub_core_vki.h"        // VKI_PAGE_SIZE
+#include "pub_core_libcbase.h"   // VG_IS_PAGE_ALIGNED
+#include "pub_core_libcassert.h" // VG_(exit_now)
+#include "pub_core_syscall.h"    // VG_(do_syscallN)
+#include "pub_core_vkiscnums.h"  // system call numbers
+#include "pub_core_debuglog.h"   // VG_(debugLog)
+#include "pub_core_options.h"    // VG_(clo_valgrind_stacksize)
+#include "config.h"              // HAVE_REMAP
 
 
 /*-----------------------------------------------------------------*/
@@ -92,7 +99,6 @@ Int ML_(am_getpid)( void )
    aspacem_assert(!sr_isError(sres));
    return sr_Res(sres);
 }
-
 
 //--------------------------------------------------------------
 // A simple sprintf implementation, so as to avoid dependence on
@@ -281,9 +287,15 @@ SysRes ML_(am_open) ( const HChar* pathname, Int flags, Int mode )
    return res;
 }
 
-Int ML_(am_read) ( Int fd, void* buf, Int count)
+Int ML_(am_read) ( Int fd, void* buf, SizeT count)
 {
    SysRes res = VG_(do_syscall3)(__NR_read, fd, (UWord)buf, count);
+   return sr_isError(res) ? -1 : sr_Res(res);
+}
+
+Int ML_(am_write) ( Int fd, const void *buf, SizeT count)
+{
+   SysRes res = VG_(do_syscall3)(__NR_write, fd, (UWord)buf, count);
    return sr_isError(res) ? -1 : sr_Res(res);
 }
 
@@ -292,7 +304,7 @@ void ML_(am_close) ( Int fd )
    (void)VG_(do_syscall1)(__NR_close, fd);
 }
 
-Int ML_(am_readlink)(const HChar* path, HChar* buf, UInt bufsiz)
+Int ML_(am_readlink)(const HChar* path, HChar* buf, SizeT bufsiz)
 {
    SysRes res;
 #  if defined(VGP_arm64_linux)
@@ -350,7 +362,7 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
    return False;
 }
 
-Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
+Bool ML_(am_resolve_filename)( Int fd, /*OUT*/HChar* buf, SizeT nbuf )
 {
 #if defined(VGO_linux)
    Int i;

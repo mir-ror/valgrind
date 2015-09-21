@@ -37,25 +37,7 @@
    minimal set of imports. */
 
 #include "pub_core_basics.h"     // types
-#include "pub_core_vkiscnums.h"  // system call numbers
-#include "pub_core_vki.h"        // VKI_PAGE_SIZE, VKI_MREMAP_MAYMOVE,
-                                 // VKI_MREMAP_FIXED, vki_stat64
-
-#include "pub_core_debuglog.h"   // VG_(debugLog)
-
-#include "pub_core_libcbase.h"   // VG_(strlen), VG_(strcmp), VG_(strncpy)
-                                 // VG_IS_PAGE_ALIGNED
-                                 // VG_PGROUNDDN, VG_PGROUNDUP
-
-#include "pub_core_libcassert.h" // VG_(exit_now)
-
-#include "pub_core_syscall.h"    // VG_(do_syscallN)
-                                 // VG_(mk_SysRes_Error)
-                                 // VG_(mk_SysRes_Success)
-
-#include "pub_core_options.h"    // VG_(clo_sanity_level)
-
-#include "pub_core_aspacemgr.h"  // self
+#include "pub_core_aspacemgr.h"  // NSegment
 
 
 /* --------------- Implemented in aspacemgr-common.c ---------------*/
@@ -111,26 +93,25 @@ extern SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 
 extern SysRes ML_(am_open)  ( const HChar* pathname, Int flags, Int mode );
 extern void   ML_(am_close) ( Int fd );
-extern Int    ML_(am_read)  ( Int fd, void* buf, Int count);
-extern Int    ML_(am_readlink) ( const HChar* path, HChar* buf, UInt bufsiz );
+extern Int    ML_(am_read)  ( Int fd, void* buf, SizeT count);
+extern Int    ML_(am_readlink) ( const HChar* path, HChar* buf, SizeT bufsiz );
 extern Int    ML_(am_fcntl) ( Int fd, Int cmd, Addr arg );
+extern Int    ML_(am_write) ( Int fd, const void *buf, SizeT count);
 
 /* Get the dev, inode and mode info for a file descriptor, if
    possible.  Returns True on success. */
-extern
 Bool ML_(am_get_fd_d_i_m)( Int fd, 
                            /*OUT*/ULong* dev, 
                            /*OUT*/ULong* ino, /*OUT*/UInt* mode );
 
-extern
-Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf );
+Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, SizeT nbuf );
 
 void ML_(am_show_len_concisely)( /*OUT*/HChar *buf, Addr start, Addr end );
 
 /* ------ Implemented separately in aspacemgr-linux.c ------ */
 
 /* Do a sanity check (/proc/self/maps sync check) */
-extern void ML_(am_do_sanity_check)( void );
+void ML_(am_do_sanity_check)( void );
 
 
 /* ------ Implemented in aspacemgr-segnames.c ------ */

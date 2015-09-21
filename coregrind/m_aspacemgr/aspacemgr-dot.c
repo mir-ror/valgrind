@@ -34,6 +34,9 @@
    Function ML_(am_write_dot) is the single entry point here. */
 
 #include "priv_aspacemgr.h"
+#include "pub_core_vki.h"        // VKI_O_CREAT
+#include "pub_core_debuglog.h"   // VG_(debugLog)
+
 
 /* Output a character. Characters are written to a buffer which is flushed
    when full or when C is the NUL character. */
@@ -43,7 +46,7 @@ static void output( HChar c, void *p )
    static UInt  num_char;
 
    if (num_char == sizeof buf || c == '\0') {
-      VG_(do_syscall3)(__NR_write, *(Int *)p, (UWord)buf, num_char);
+      ML_(am_write)(*(Int *)p, buf, num_char);
       num_char = 0;
    }
    if (c != '\0') buf[num_char++] = c;
