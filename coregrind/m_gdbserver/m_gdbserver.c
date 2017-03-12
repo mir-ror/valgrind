@@ -1144,11 +1144,10 @@ void VG_(helperc_invalidate_if_not_gdbserved) ( Addr addr )
 }
 
 static void VG_(add_stmt_call_invalidate_if_not_gdbserved)
-     ( IRSB* sb_in,
-       const VexGuestLayout* layout, 
-       const VexGuestExtents* vge,
-       IRTemp jmp, 
-       IRSB* irsb)
+     (const VexGuestLayout* layout, 
+      const VexGuestExtents* vge,
+      IRTemp jmp, 
+      IRSB* irsb)
 {
    
    void*    fn;
@@ -1167,7 +1166,7 @@ static void VG_(add_stmt_call_invalidate_if_not_gdbserved)
 
    di->nFxState = 0;
 
-   addStmtToIRSB(irsb, IRStmt_Dirty(di));
+   addStmtToIRStmtVec(irsb->stmts, IRStmt_Dirty(di));
 }
 
 /* software_breakpoint support --------------------------------------*/
@@ -1182,13 +1181,12 @@ static void VG_(add_stmt_call_invalidate_if_not_gdbserved)
    of other breaks in the same sb_in while the process is stopped), a
    debugger statement will be inserted for all instructions of a block. */
 static void VG_(add_stmt_call_gdbserver) 
-     (IRSB* sb_in,                /* block being translated */
-      const VexGuestLayout* layout, 
+     (const VexGuestLayout* layout, 
       const VexGuestExtents* vge,
       IRType gWordTy, IRType hWordTy,
-      Addr  iaddr,                /* Addr of instruction being instrumented */
-      UChar delta,                /* delta to add to iaddr to obtain IP */
-      IRSB* irsb)                 /* irsb block to which call is added */
+      Addr       iaddr,          /* Addr of instruction being instrumented */
+      UChar      delta,          /* delta to add to iaddr to obtain IP */
+      IRStmtVec* stmts)          /* list of statements to which call is added */
 {
    void*    fn;
    const HChar*   nm;
@@ -1213,8 +1211,8 @@ static void VG_(add_stmt_call_gdbserver)
       IP when executing thumb code. gdb uses this thumb bit a.o.
       to properly guess the next IP for the 'step' and 'stepi' commands. */
    vg_assert(delta <= 1);
-   addStmtToIRSB(irsb, IRStmt_Put(layout->offset_IP ,
-                                  mkIRExpr_HWord(iaddr + (Addr)delta)));
+   addStmtToIRStmtVec(stmts, IRStmt_Put(layout->offset_IP ,
+                                        mkIRExpr_HWord(iaddr + (Addr)delta)));
 
    fn    = &VG_(helperc_CallDebugger);
    nm    = "VG_(helperc_CallDebugger)";
@@ -1245,8 +1243,7 @@ static void VG_(add_stmt_call_gdbserver)
    di->fxState[1].nRepeats  = 0;
    di->fxState[1].repeatLen = 0;
 
-   addStmtToIRSB(irsb, IRStmt_Dirty(di));
-
+   addStmtToIRStmtVec(stmts, IRStmt_Dirty(di));
 }
 
 
@@ -1269,31 +1266,25 @@ static void VG_(add_stmt_call_invalidate_exit_target_if_not_gdbserved)
                                        : sb_in->next->Iex.Const.con->Ico.U32);
    } else if (sb_in->next->tag == Iex_RdTmp) {
      VG_(add_stmt_call_invalidate_if_not_gdbserved)
-       (sb_in, layout, vge, sb_in->next->Iex.RdTmp.tmp, irsb);
+       (layout, vge, sb_in->next->Iex.RdTmp.tmp, irsb);
    } else {
      vg_assert (0); /* unexpected expression tag in exit. */
    }
 }
 
-IRSB* VG_(instrument_for_gdbserver_if_needed)
-     (IRSB* sb_in,
-      const VexGuestLayout* layout,
-      const VexGuestExtents* vge,
-      IRType gWordTy, IRType hWordTy)
+static IRStmtVec* instrument_for_gdbserver_IRStmtVec
+                    (IRStmtVec*             stmts_in,
+                     IRStmtVec*             parent,
+                     const VgVgdb           instr_needed,
+                     const VexGuestLayout*  layout,
+                     const VexGuestExtents* vge,
+                     IRType gWordTy, IRType hWordTy)
 {
-   IRSB* sb_out;
-   Int i;
-   const VgVgdb instr_needed = VG_(gdbserver_instrumentation_needed) (vge);
+   IRStmtVec* stmts_out = emptyIRStmtVec();
+   stmts_out->parent    = parent;
 
-   if (instr_needed == Vg_VgdbNo)
-     return sb_in;
-
-
-   /* here, we need to instrument for gdbserver */
-   sb_out = deepCopyIRSBExceptStmts(sb_in);
-
-   for (i = 0; i < sb_in->stmts_used; i++) {
-      IRStmt* st = sb_in->stmts[i];
+   for (UInt i = 0; i < stmts_in->stmts_used; i++) {
+      IRStmt* st = stmts_in->stmts[i];
       
       if (!st || st->tag == Ist_NoOp) continue;
       
@@ -1303,18 +1294,27 @@ IRSB* VG_(instrument_for_gdbserver_if_needed)
            st->Ist.Exit.dst->Ico.U64 : 
            st->Ist.Exit.dst->Ico.U32);
       }
-      addStmtToIRSB( sb_out, st );
+
+      if (st->tag == Ist_IfThenElse) {
+         st = IRStmt_IfThenElse(
+                st->Ist.IfThenElse.cond,
+                instrument_for_gdbserver_IRStmtVec(st->Ist.IfThenElse.then_leg,
+                        stmts_out, instr_needed, layout, vge, gWordTy, hWordTy),
+                instrument_for_gdbserver_IRStmtVec(st->Ist.IfThenElse.else_leg,
+                        stmts_out, instr_needed, layout, vge, gWordTy, hWordTy),
+                st->Ist.IfThenElse.phi_nodes);
+      }
+      addStmtToIRStmtVec(stmts_out, st);
+
       if (st->tag == Ist_IMark) {
          /* For an Ist_Mark, add a call to debugger. */
          switch (instr_needed) {
          case Vg_VgdbNo: vg_assert (0);
          case Vg_VgdbYes:
          case Vg_VgdbFull:
-            VG_(add_stmt_call_gdbserver) ( sb_in, layout, vge,
-                                           gWordTy, hWordTy,
-                                           st->Ist.IMark.addr,
-                                           st->Ist.IMark.delta,
-                                           sb_out);
+            VG_(add_stmt_call_gdbserver)(layout, vge, gWordTy, hWordTy,
+                                         st->Ist.IMark.addr, st->Ist.IMark.delta,
+                                         stmts_out);
             /* There is an optimisation possible here for Vg_VgdbFull:
                Put a guard ensuring we only call gdbserver if 'FullCallNeeded'.
                FullCallNeeded would be set to 1 we have just switched on
@@ -1329,11 +1329,28 @@ IRSB* VG_(instrument_for_gdbserver_if_needed)
       }
    }
 
+   return stmts_out;
+}
+
+IRSB* VG_(instrument_for_gdbserver_if_needed)
+     (IRSB* sb_in,
+      const VexGuestLayout* layout,
+      const VexGuestExtents* vge,
+      IRType gWordTy, IRType hWordTy)
+{
+   const VgVgdb instr_needed = VG_(gdbserver_instrumentation_needed) (vge);
+
+   if (instr_needed == Vg_VgdbNo)
+     return sb_in;
+
+   /* here, we need to instrument for gdbserver */
+   IRSB* sb_out = deepCopyIRSBExceptStmts(sb_in);
+   sb_out->stmts = instrument_for_gdbserver_IRStmtVec(sb_in->stmts, NULL,
+                                   instr_needed, layout, vge, gWordTy, hWordTy);
+
    if (instr_needed == Vg_VgdbYes) {
-      VG_(add_stmt_call_invalidate_exit_target_if_not_gdbserved) (sb_in,
-                                                                  layout, vge,
-                                                                  gWordTy,
-                                                                  sb_out);
+      VG_(add_stmt_call_invalidate_exit_target_if_not_gdbserved)(sb_in, layout,
+                                                          vge, gWordTy, sb_out);
    }
 
    return sb_out;
