@@ -332,7 +332,7 @@ static void initMCEnv(IRStmtVec* stmts_in, MCEnv* mce, MCEnv* parent_mce)
 {
    IRStmtVec* stmts_out = emptyIRStmtVec();
    stmts_out->tyenv     = deepCopyIRTypeEnv(stmts_in->tyenv);
-   stmts_out->parent    = parent_mce->stmts;
+   stmts_out->parent    = (parent_mce != NULL) ? parent_mce->stmts : NULL;
 
    mce->stmts    = stmts_out;
    mce->tyenv    = stmts_out->tyenv;
@@ -6670,6 +6670,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    MCEnv mce;
    initMCEnv(sb_in->stmts, &mce, NULL);
    mce.settings = &settings;
+   sb_out->stmts = mce.stmts;
 
    tl_assert(isFlatIRSB(sb_in));
 
