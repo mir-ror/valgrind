@@ -207,6 +207,7 @@ typedef
       IRStmtVec* stmts;
       IRTypeEnv* tyenv;
       IRTyEnvID  id;
+      UInt       depth; /* for indenting properly nested statements */
 
       /* MODIFIED: a table [0 .. #temps_in_sb-1] which gives the
          current kind and possibly shadow temps for each temp in the
@@ -337,6 +338,7 @@ static void initMCEnv(IRStmtVec* stmts_in, MCEnv* mce, MCEnv* parent_mce)
    mce->stmts    = stmts_out;
    mce->tyenv    = stmts_out->tyenv;
    mce->id       = mce->tyenv->id;
+   mce->depth    = (parent_mce != NULL) ? parent_mce->depth + 1 : 0;
    mce->parent   = parent_mce;
    mce->settings = (parent_mce != NULL) ? parent_mce->settings : NULL;
 
@@ -6497,7 +6499,7 @@ static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
 
       if (mce->settings->trace) {
          VG_(printf)("\n");
-         ppIRStmt(st);
+         ppIRStmt_wrk(st, mce->depth);
          VG_(printf)("\n");
       }
 
@@ -6604,8 +6606,7 @@ static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
 
       if (0 && mce->settings->trace) {
          for (UInt j = first_stmt; j < mce->stmts->stmts_used; j++) {
-            VG_(printf)("   ");
-            ppIRStmt(mce->stmts->stmts[j]);
+            ppIRStmt_wrk(mce->stmts->stmts[j], mce->depth + 1);
             VG_(printf)("\n");
          }
          VG_(printf)("\n");
@@ -6763,8 +6764,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    if (0 && verboze) {
       for (UInt j = first_stmt; j < sb_out->stmts->stmts_used; j++) {
-         VG_(printf)("   ");
-         ppIRStmt(sb_out->stmts->stmts[j]);
+         ppIRStmt_wrk(sb_out->stmts->stmts[j], 1);
          VG_(printf)("\n");
       }
       VG_(printf)("\n");
