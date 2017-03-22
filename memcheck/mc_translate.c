@@ -220,7 +220,7 @@ typedef
          The reason for this strange split (types in one place, all
          other info in another) is that we need the types to be
          attached to sb so as to make it possible to do
-         "typeOfIRExpr(mce->tyenv, ...)" at various places in the
+         "typeOfIRExpr(mce->stmts, ...)" at various places in the
          instrumentation process. */
       XArray* /* of TempMapEnt */ tmpMap;
 
@@ -525,7 +525,7 @@ static IRAtom* assignNew ( HChar cat, MCEnv* mce, IRType ty, IRExpr* e )
 {
    TempKind k;
    IRTemp   t;
-   IRType   tyE = typeOfIRExpr(mce->tyenv, e);
+   IRType   tyE = typeOfIRExpr(mce->stmts, e);
 
    tl_assert(tyE == ty); /* so 'ty' is redundant (!) */
    switch (cat) {
@@ -829,7 +829,7 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
 
    /* Note, dst_ty is a shadow type, not an original type. */
    tl_assert(isShadowAtom(mce,vbits));
-   src_ty = typeOfIRExpr(mce->tyenv, vbits);
+   src_ty = typeOfIRExpr(mce->stmts, vbits);
 
    /* Fast-track some common cases */
    if (src_ty == Ity_I32 && dst_ty == Ity_I32)
@@ -1319,7 +1319,7 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom, IRExpr *guard )
    tl_assert(isShadowAtom(mce, vatom));
    tl_assert(sameKindedAtoms(atom, vatom));
 
-   ty = typeOfIRExpr(mce->tyenv, vatom);
+   ty = typeOfIRExpr(mce->stmts, vatom);
 
    /* sz is only used for constructing the error message */
    sz = ty==Ity_I1 ? 0 : sizeofIRType(ty);
@@ -1532,7 +1532,7 @@ void do_shadow_PUT ( MCEnv* mce,  Int offset,
       tl_assert(isShadowAtom(mce, vatom));
    }
 
-   ty = typeOfIRExpr(mce->tyenv, vatom);
+   ty = typeOfIRExpr(mce->stmts, vatom);
    tl_assert(ty != Ity_I1);
    if (isAlwaysDefd(mce, offset, sizeofIRType(ty))) {
       /* later: no ... */
@@ -1659,8 +1659,8 @@ static
 IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
 {
    IRAtom* at;
-   IRType t1 = typeOfIRExpr(mce->tyenv, va1);
-   IRType t2 = typeOfIRExpr(mce->tyenv, va2);
+   IRType t1 = typeOfIRExpr(mce->stmts, va1);
+   IRType t2 = typeOfIRExpr(mce->stmts, va2);
    tl_assert(isShadowAtom(mce,va1));
    tl_assert(isShadowAtom(mce,va2));
 
@@ -1716,9 +1716,9 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
                   IRAtom* va1, IRAtom* va2, IRAtom* va3 )
 {
    IRAtom* at;
-   IRType t1 = typeOfIRExpr(mce->tyenv, va1);
-   IRType t2 = typeOfIRExpr(mce->tyenv, va2);
-   IRType t3 = typeOfIRExpr(mce->tyenv, va3);
+   IRType t1 = typeOfIRExpr(mce->stmts, va1);
+   IRType t2 = typeOfIRExpr(mce->stmts, va2);
+   IRType t3 = typeOfIRExpr(mce->stmts, va3);
    tl_assert(isShadowAtom(mce,va1));
    tl_assert(isShadowAtom(mce,va2));
    tl_assert(isShadowAtom(mce,va3));
@@ -1850,10 +1850,10 @@ IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty,
                   IRAtom* va1, IRAtom* va2, IRAtom* va3, IRAtom* va4 )
 {
    IRAtom* at;
-   IRType t1 = typeOfIRExpr(mce->tyenv, va1);
-   IRType t2 = typeOfIRExpr(mce->tyenv, va2);
-   IRType t3 = typeOfIRExpr(mce->tyenv, va3);
-   IRType t4 = typeOfIRExpr(mce->tyenv, va4);
+   IRType t1 = typeOfIRExpr(mce->stmts, va1);
+   IRType t2 = typeOfIRExpr(mce->stmts, va2);
+   IRType t3 = typeOfIRExpr(mce->stmts, va3);
+   IRType t4 = typeOfIRExpr(mce->stmts, va4);
    tl_assert(isShadowAtom(mce,va1));
    tl_assert(isShadowAtom(mce,va2));
    tl_assert(isShadowAtom(mce,va3));
@@ -1952,7 +1952,7 @@ IRAtom* mkLazyN ( MCEnv* mce,
       tl_assert(isOriginalAtom(mce, exprvec[i]));
       if (cee->mcx_mask & (1<<i))
          continue;
-      if (typeOfIRExpr(mce->tyenv, exprvec[i]) != Ity_I64)
+      if (typeOfIRExpr(mce->stmts, exprvec[i]) != Ity_I64)
          mergeTy64 = False;
    }
 
@@ -5028,7 +5028,7 @@ IRAtom* expr2vbits_ITE ( MCEnv* mce,
    vbitsC = expr2vbits(mce, cond);
    vbits1 = expr2vbits(mce, iftrue);
    vbits0 = expr2vbits(mce, iffalse);
-   ty = typeOfIRExpr(mce->tyenv, vbits0);
+   ty = typeOfIRExpr(mce->stmts, vbits0);
 
    return
       mkUifU(mce, ty, assignNew('V', mce, ty, 
@@ -5054,7 +5054,7 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
          return IRExpr_RdTmp( findShadowTmpV(mce, e->Iex.RdTmp.tmp) );
 
       case Iex_Const:
-         return definedOfType(shadowTypeV(typeOfIRExpr(mce->tyenv, e)));
+         return definedOfType(shadowTypeV(typeOfIRExpr(mce->stmts, e)));
 
       case Iex_Qop:
          return expr2vbits_Qop(
@@ -5119,7 +5119,7 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
    /* vatom is vbits-value and as such can only have a shadow type. */
    tl_assert(isShadowAtom(mce,vatom));
 
-   ty  = typeOfIRExpr(mce->tyenv, vatom);
+   ty  = typeOfIRExpr(mce->stmts, vatom);
    tyH = mce->settings->hWordTy;
 
    if (tyH == Ity_I32) {
@@ -5199,10 +5199,10 @@ void do_shadow_Store ( MCEnv* mce,
 
    if (guard) {
       tl_assert(isOriginalAtom(mce, guard));
-      tl_assert(typeOfIRExpr(mce->tyenv, guard) == Ity_I1);
+      tl_assert(typeOfIRExpr(mce->stmts, guard) == Ity_I1);
    }
 
-   ty = typeOfIRExpr(mce->tyenv, vdata);
+   ty = typeOfIRExpr(mce->stmts, vdata);
 
    // If we're not doing undefined value checking, pretend that this value
    // is "all valid".  That lets Vex's optimiser remove some of the V bit
@@ -5530,7 +5530,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
       tl_assert(d->mAddr);
       complainIfUndefined(mce, d->mAddr, d->guard);
 
-      tyAddr = typeOfIRExpr(mce->tyenv, d->mAddr);
+      tyAddr = typeOfIRExpr(mce->stmts, d->mAddr);
       tl_assert(tyAddr == Ity_I32 || tyAddr == Ity_I64);
       tl_assert(tyAddr == mce->settings->hWordTy); /* not really right */
    }
@@ -5581,7 +5581,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
    /* Outputs: the destination temporary, if there is one. */
    if (!isIRTempInvalid(d->tmp)) {
       dst   = findShadowTmpV(mce, d->tmp);
-      tyDst = typeOfIRTemp(mce->tyenv, d->tmp);
+      tyDst = typeOfIRTemp(mce->stmts, d->tmp);
       assign( 'V', mce, dst, mkPCastTo( mce, tyDst, curr) );
    }
 
@@ -5913,7 +5913,7 @@ static void do_shadow_CAS_single ( MCEnv* mce, IRCAS* cas )
    tl_assert(cas->expdHi == NULL);
    tl_assert(cas->dataHi == NULL);
 
-   elemTy = typeOfIRExpr(mce->tyenv, cas->expdLo);
+   elemTy = typeOfIRExpr(mce->stmts, cas->expdLo);
    switch (elemTy) {
       case Ity_I8:  elemSzB = 1; opCasCmpEQ = Iop_CasCmpEQ8;  break;
       case Ity_I16: elemSzB = 2; opCasCmpEQ = Iop_CasCmpEQ16; break;
@@ -6007,7 +6007,7 @@ static void do_shadow_CAS_double ( MCEnv* mce, IRCAS* cas )
    tl_assert(cas->expdHi != NULL);
    tl_assert(cas->dataHi != NULL);
 
-   elemTy = typeOfIRExpr(mce->tyenv, cas->expdLo);
+   elemTy = typeOfIRExpr(mce->stmts, cas->expdLo);
    switch (elemTy) {
       case Ity_I8:
          opCasCmpEQ = Iop_CasCmpEQ8; opOr = Iop_Or8; opXor = Iop_Xor8; 
@@ -6161,7 +6161,7 @@ static void do_shadow_LLSC ( MCEnv*    mce,
       assignment of the loaded (shadow) data to the result temporary.
       Treat a store-conditional like a normal store, and mark the
       result temporary as defined. */
-   IRType resTy  = typeOfIRTemp(mce->tyenv, stResult);
+   IRType resTy  = typeOfIRTemp(mce->stmts, stResult);
    IRTemp resTmp = findShadowTmpV(mce, stResult);
 
    tl_assert(isIRAtom(stAddr));
@@ -6182,7 +6182,7 @@ static void do_shadow_LLSC ( MCEnv*    mce,
    } else {
       /* Store Conditional */
       /* Stay sane */
-      IRType dataTy = typeOfIRExpr(mce->tyenv,
+      IRType dataTy = typeOfIRExpr(mce->stmts,
                                    stStoredata);
       tl_assert(dataTy == Ity_I64 || dataTy == Ity_I32
                 || dataTy == Ity_I16 || dataTy == Ity_I8);
@@ -6728,11 +6728,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             no need to assert that here. */
          IRTemp tmp_o = sb_in->stmts->stmts[j]->Ist.WrTmp.tmp;
          IRTemp tmp_v = findShadowTmpV(&mce, tmp_o);
-         IRType ty_v  = typeOfIRTemp(mce.tyenv, tmp_v);
+         IRType ty_v  = typeOfIRTemp(mce.stmts, tmp_v);
          assign('V', &mce, tmp_v, definedOfType(ty_v));
          if (MC_(clo_mc_level) == 3) {
             IRTemp tmp_b = findShadowTmpB(&mce, tmp_o);
-            tl_assert(typeOfIRTemp(mce.tyenv, tmp_b) == Ity_I32);
+            tl_assert(typeOfIRTemp(mce.stmts, tmp_b) == Ity_I32);
             assign('B', &mce, tmp_b, mkU32(0)/* UNKNOWN ORIGIN */);
          }
          if (0) {
@@ -7089,7 +7089,7 @@ static IRAtom* gen_guarded_load_b ( MCEnv* mce, Int szB,
    const HChar* hName;
    IRTemp   bTmp;
    IRDirty* di;
-   IRType   aTy   = typeOfIRExpr( mce->tyenv, baseaddr );
+   IRType   aTy   = typeOfIRExpr(mce->stmts, baseaddr);
    IROp     opAdd = aTy == Ity_I32 ? Iop_Add32 : Iop_Add64;
    IRAtom*  ea    = baseaddr;
    if (offset != 0) {
@@ -7204,12 +7204,12 @@ static void gen_store_b ( MCEnv* mce, Int szB,
    void*    hFun;
    const HChar* hName;
    IRDirty* di;
-   IRType   aTy   = typeOfIRExpr( mce->tyenv, baseaddr );
+   IRType   aTy   = typeOfIRExpr(mce->stmts, baseaddr);
    IROp     opAdd = aTy == Ity_I32 ? Iop_Add32 : Iop_Add64;
    IRAtom*  ea    = baseaddr;
    if (guard) {
       tl_assert(isOriginalAtom(mce, guard));
-      tl_assert(typeOfIRExpr(mce->tyenv, guard) == Ity_I1);
+      tl_assert(typeOfIRExpr(mce->stmts, guard) == Ity_I1);
    }
    if (offset != 0) {
       IRAtom* off = aTy == Ity_I32 ? mkU32( offset )
@@ -7252,7 +7252,7 @@ static void gen_store_b ( MCEnv* mce, Int szB,
 }
 
 static IRAtom* narrowTo32 ( MCEnv* mce, IRAtom* e ) {
-   IRType eTy = typeOfIRExpr(mce->tyenv, e);
+   IRType eTy = typeOfIRExpr(mce->stmts, e);
    if (eTy == Ity_I64)
       return assignNew( 'B', mce, Ity_I32, unop(Iop_64to32, e) );
    if (eTy == Ity_I32)
@@ -7261,7 +7261,7 @@ static IRAtom* narrowTo32 ( MCEnv* mce, IRAtom* e ) {
 }
 
 static IRAtom* zWidenFrom32 ( MCEnv* mce, IRType dstTy, IRAtom* e ) {
-   IRType eTy = typeOfIRExpr(mce->tyenv, e);
+   IRType eTy = typeOfIRExpr(mce->stmts, e);
    tl_assert(eTy == Ity_I32);
    if (dstTy == Ity_I64)
       return assignNew( 'B', mce, Ity_I64, unop(Iop_32Uto64, e) );
@@ -7627,7 +7627,7 @@ static void do_origins_Store_guarded ( MCEnv* mce,
       XXXX how does this actually ensure that?? */
    tl_assert(isIRAtom(stAddr));
    tl_assert(isIRAtom(stData));
-   dszB  = sizeofIRType( typeOfIRExpr(mce->tyenv, stData ) );
+   dszB  = sizeofIRType( typeOfIRExpr(mce->stmts, stData ) );
    dataB = schemeE( mce, stData );
    gen_store_b( mce, dszB, stAddr, 0/*offset*/, dataB, guard );
 }
@@ -7746,7 +7746,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
          if (st->Ist.LLSC.storedata == NULL) {
             /* Load Linked */
             IRType resTy 
-               = typeOfIRTemp(mce->tyenv, st->Ist.LLSC.result);
+               = typeOfIRTemp(mce->stmts, st->Ist.LLSC.result);
             IRExpr* vanillaLoad
                = IRExpr_Load(st->Ist.LLSC.end, resTy, st->Ist.LLSC.addr);
             tl_assert(resTy == Ity_I64 || resTy == Ity_I32
@@ -7772,7 +7772,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
          Int b_offset
             = MC_(get_otrack_shadow_offset)(
                  st->Ist.Put.offset,
-                 sizeofIRType(typeOfIRExpr(mce->tyenv, st->Ist.Put.data))
+                 sizeofIRType(typeOfIRExpr(mce->stmts, st->Ist.Put.data))
               );
          if (b_offset >= 0) {
             /* FIXME: this isn't an atom! */

@@ -406,7 +406,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       if (e->tag != Iex_Get)              goto case2;
       if (e->Iex.Get.offset != offset_SP) goto case2;
       if (e->Iex.Get.ty != typeof_SP)     goto case2;
-      vg_assert( typeOfIRTemp(out->tyenv, st->Ist.WrTmp.tmp) == typeof_SP );
+      vg_assert( typeOfIRTemp(out, st->Ist.WrTmp.tmp) == typeof_SP );
       add_SP_alias(st->Ist.WrTmp.tmp, 0);
       addStmtToIRStmtVec(out, st);
       continue;
@@ -421,7 +421,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       if (e->Iex.Binop.arg2->tag != Iex_Const) goto case3;
       if (!IS_ADD_OR_SUB(e->Iex.Binop.op)) goto case3;
       con = GET_CONST(e->Iex.Binop.arg2->Iex.Const.con);
-      vg_assert( typeOfIRTemp(out->tyenv, st->Ist.WrTmp.tmp) == typeof_SP );
+      vg_assert( typeOfIRTemp(out, st->Ist.WrTmp.tmp) == typeof_SP );
       if (IS_ADD(e->Iex.Binop.op)) {
          add_SP_alias(st->Ist.WrTmp.tmp, delta + con);
       } else {
@@ -436,7 +436,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       e = st->Ist.WrTmp.data;
       if (e->tag != Iex_RdTmp) goto case4;
       if (!get_SP_delta(e->Iex.RdTmp.tmp, &delta)) goto case4;
-      vg_assert( typeOfIRTemp(out->tyenv, st->Ist.WrTmp.tmp) == typeof_SP );
+      vg_assert( typeOfIRTemp(out, st->Ist.WrTmp.tmp) == typeof_SP );
       add_SP_alias(st->Ist.WrTmp.tmp, delta);
       addStmtToIRStmtVec(out, st);
       continue;
@@ -451,7 +451,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       last_SP   = first_SP + sizeof_SP - 1;
       first_Put = st->Ist.Put.offset;
       last_Put  = first_Put
-                  + sizeofIRType(typeOfIRExpr(out->tyenv, st->Ist.Put.data))
+                  + sizeofIRType(typeOfIRExpr(out, st->Ist.Put.data))
                   - 1;
       vg_assert(first_SP <= last_SP);
       vg_assert(first_Put <= last_Put);
@@ -469,7 +469,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
             put_SP_alias is immediately preceded by an assertion that
             we are putting in a binding for a correctly-typed
             temporary. */
-         vg_assert( typeOfIRTemp(out->tyenv, tttmp) == typeof_SP );
+         vg_assert( typeOfIRTemp(out, tttmp) == typeof_SP );
          /* From the same type-and-offset-correctness argument, if 
             we found a useable alias, it must for an "exact" write of SP. */
          vg_assert(first_SP == first_Put);
@@ -609,7 +609,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
 
          if (first_Put == first_SP && last_Put == last_SP
              && st->Ist.Put.data->tag == Iex_RdTmp) {
-            vg_assert( typeOfIRTemp(out->tyenv, st->Ist.Put.data->Iex.RdTmp.tmp)
+            vg_assert( typeOfIRTemp(out, st->Ist.Put.data->Iex.RdTmp.tmp)
                        == typeof_SP );
             add_SP_alias(st->Ist.Put.data->Iex.RdTmp.tmp, 0);
          }
@@ -1029,11 +1029,11 @@ static IRExpr* mkU32 ( UInt n ) {
 static IRExpr* mkU8 ( UChar n ) {
    return IRExpr_Const(IRConst_U8(n));
 }
-static IRExpr* narrowTo32 ( IRTypeEnv* tyenv, IRExpr* e ) {
-   if (typeOfIRExpr(tyenv, e) == Ity_I32) {
+static IRExpr* narrowTo32 ( IRStmtVec* stmts, IRExpr* e ) {
+   if (typeOfIRExpr(stmts, e) == Ity_I32) {
       return e;
    } else {
-      vg_assert(typeOfIRExpr(tyenv, e) == Ity_I64);
+      vg_assert(typeOfIRExpr(stmts, e) == Ity_I64);
       return IRExpr_Unop(Iop_64to32, e);
    }
 }
@@ -1086,7 +1086,7 @@ static void gen_PUSH ( IRSB* bb, IRExpr* e )
    t1    = newIRTemp( bb->tyenv, ty_Word );
    one   = mkU(1);
 
-   vg_assert(typeOfIRExpr(bb->tyenv, e) == ty_Word);
+   vg_assert(typeOfIRExpr(bb->stmts, e) == ty_Word);
 
    /* t1 = guest_REDIR_SP + 1 */
    addStmtToIRSB(
@@ -1132,7 +1132,7 @@ static void gen_PUSH ( IRSB* bb, IRExpr* e )
    addStmtToIRSB(
       bb, 
       IRStmt_PutI(mkIRPutI(descr, 
-                           narrowTo32(bb->tyenv,IRExpr_RdTmp(t1)), 0, e)));
+                           narrowTo32(bb->stmts, IRExpr_RdTmp(t1)), 0, e)));
 }
 
 
@@ -1212,7 +1212,7 @@ static IRTemp gen_POP ( IRSB* bb )
       bb,
       IRStmt_WrTmp(
          res, 
-         IRExpr_GetI(descr, narrowTo32(bb->tyenv,IRExpr_RdTmp(t1)), 0)
+         IRExpr_GetI(descr, narrowTo32(bb->stmts, IRExpr_RdTmp(t1)), 0)
       )
    );
 
