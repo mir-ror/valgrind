@@ -277,24 +277,26 @@ static IRTemp newTemp ( MCEnv* mce, IRType ty, TempKind kind )
    so far exists, allocate one.  */
 static IRTemp findShadowTmpV ( MCEnv* mce, IRTemp orig )
 {
-   if (mce->id == orig.id) {
-      /* VG_(indexXA) range-checks 'orig', hence no need to check here. */
-      TempMapEnt* ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
-      tl_assert(ent->kind == Orig);
-      if (isIRTempInvalid(ent->shadowV)) {
-         IRTemp tmpV = newTemp(mce, shadowTypeV(mce->tyenv->types[orig.index]),
-                               VSh);
-         /* newTemp may cause mce->tmpMap to resize, hence previous results
-            from VG_(indexXA) are invalid. */
-         ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
-         tl_assert(ent->kind == Orig);
-         tl_assert(isIRTempInvalid(ent->shadowV));
-         ent->shadowV = tmpV;
-      }
-      return ent->shadowV;
-   } else {
-      return findShadowTmpV(mce->parent, orig);
+   while (mce->id != orig.id) {
+      mce = mce->parent;
+      tl_assert(mce != NULL);
    }
+   tl_assert(mce->id == orig.id);
+
+   /* VG_(indexXA) range-checks 'orig', hence no need to check here. */
+   TempMapEnt* ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
+   tl_assert(ent->kind == Orig);
+   if (isIRTempInvalid(ent->shadowV)) {
+      IRTemp tmpV = newTemp(mce, shadowTypeV(mce->tyenv->types[orig.index]),
+                            VSh);
+      /* newTemp may cause mce->tmpMap to resize, hence previous results
+         from VG_(indexXA) are invalid. */
+      ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
+      tl_assert(ent->kind == Orig);
+      tl_assert(isIRTempInvalid(ent->shadowV));
+      ent->shadowV = tmpV;
+   }
+   return ent->shadowV;
 }
 
 /* Allocate a new shadow for the given original tmp.  This means any
@@ -384,12 +386,14 @@ static Bool isOriginalAtom ( MCEnv* mce, IRAtom* a1 )
    if (a1->tag == Iex_Const)
       return True;
    if (a1->tag == Iex_RdTmp) {
-      if (mce->id == a1->Iex.RdTmp.tmp.id) {
-         TempMapEnt* ent = VG_(indexXA)(mce->tmpMap, a1->Iex.RdTmp.tmp.index);
-         return ent->kind == Orig;
-      } else {
-         return isOriginalAtom(mce->parent, a1);
+      while (mce->id != a1->Iex.RdTmp.tmp.id) {
+         mce = mce->parent;
+         tl_assert(mce != NULL);
       }
+      tl_assert(mce->id == a1->Iex.RdTmp.tmp.id);
+
+      TempMapEnt* ent = VG_(indexXA)(mce->tmpMap, a1->Iex.RdTmp.tmp.index);
+      return ent->kind == Orig;
    }
    return False;
 }
@@ -401,12 +405,14 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
    if (a1->tag == Iex_Const)
       return True;
    if (a1->tag == Iex_RdTmp) {
-      if (mce->id == a1->Iex.RdTmp.tmp.id) {
-         TempMapEnt* ent = VG_(indexXA)(mce->tmpMap, a1->Iex.RdTmp.tmp.index);
-         return ent->kind == VSh || ent->kind == BSh;
-      } else {
-         return isShadowAtom(mce->parent, a1);
+      while (mce->id != a1->Iex.RdTmp.tmp.id) {
+         mce = mce->parent;
+         tl_assert(mce != NULL);
       }
+      tl_assert(mce->id == a1->Iex.RdTmp.tmp.id);
+
+      TempMapEnt* ent = VG_(indexXA)(mce->tmpMap, a1->Iex.RdTmp.tmp.index);
+      return ent->kind == VSh || ent->kind == BSh;
    }
    return False;
 }
@@ -7045,23 +7051,25 @@ IRSB* MC_(final_tidy) ( IRSB* sb_in )
 /* Almost identical to findShadowTmpV. */
 static IRTemp findShadowTmpB ( MCEnv* mce, IRTemp orig )
 {
-   if (mce->id == orig.id) {
-      /* VG_(indexXA) range-checks 'orig', hence no need to check here. */
-      TempMapEnt* ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
-      tl_assert(ent->kind == Orig);
-      if (isIRTempInvalid(ent->shadowB)) {
-         IRTemp tmpB = newTemp( mce, Ity_I32, BSh );
-         /* newTemp may cause mce->tmpMap to resize, hence previous results
-            from VG_(indexXA) are invalid. */
-         ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
-         tl_assert(ent->kind == Orig);
-         tl_assert(isIRTempInvalid(ent->shadowB));
-         ent->shadowB = tmpB;
-      }
-      return ent->shadowB;
-   } else {
-      return findShadowTmpB(mce->parent, orig);
+   while (mce->id != orig.id) {
+      mce = mce->parent;
+      tl_assert(mce != NULL);
    }
+   tl_assert(mce->id == orig.id);
+
+   /* VG_(indexXA) range-checks 'orig', hence no need to check here. */
+   TempMapEnt* ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
+   tl_assert(ent->kind == Orig);
+   if (isIRTempInvalid(ent->shadowB)) {
+      IRTemp tmpB = newTemp( mce, Ity_I32, BSh );
+      /* newTemp may cause mce->tmpMap to resize, hence previous results
+         from VG_(indexXA) are invalid. */
+      ent = (TempMapEnt*) VG_(indexXA)(mce->tmpMap, orig.index);
+      tl_assert(ent->kind == Orig);
+      tl_assert(isIRTempInvalid(ent->shadowB));
+      ent->shadowB = tmpB;
+   }
+   return ent->shadowB;
 }
 
 static IRAtom* gen_maxU32 ( MCEnv* mce, IRAtom* b1, IRAtom* b2 )
