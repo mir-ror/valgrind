@@ -6295,17 +6295,14 @@ static void do_shadow_IfThenElse(MCEnv* mce, IRExpr* cond, IRStmtVec* then_leg,
    initMCEnv(else_leg, &else_mce, mce);
    instrument_IRStmtVec(else_leg, 0, &else_mce);
 
-   IRPhiVec* phi_nodes_out = NULL;
-   if (phi_nodes_in != NULL) {
-      phi_nodes_out = emptyIRPhiVec();
-      for (UInt i = 0; i < phi_nodes_in->phis_used; i++) {
-         IRPhi* phi_in     = phi_nodes_in->phis[i];
-         IRPhi* phi_shadow = mkIRPhi(findShadowTmp(mce, phi_in->dst),
-                                     findShadowTmp(&then_mce, phi_in->srcThen),
-                                     findShadowTmp(&else_mce, phi_in->srcElse));
-         phi(category, mce, phi_nodes_out, phi_shadow);
-         phi('C', mce, phi_nodes_out, phi_in);
-      }
+   IRPhiVec* phi_nodes_out = emptyIRPhiVec();
+   for (UInt i = 0; i < phi_nodes_in->phis_used; i++) {
+      IRPhi* phi_in     = phi_nodes_in->phis[i];
+      IRPhi* phi_shadow = mkIRPhi(findShadowTmp(mce, phi_in->dst),
+                                  findShadowTmp(&then_mce, phi_in->srcThen),
+                                  findShadowTmp(&else_mce, phi_in->srcElse));
+      phi(category, mce, phi_nodes_out, phi_shadow);
+      phi('C', mce, phi_nodes_out, phi_in);
    }
 
    stmt(category, mce, IRStmt_IfThenElse(cond, then_mce.stmts, else_mce.stmts,
