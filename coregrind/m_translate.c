@@ -159,7 +159,7 @@ static void clear_SP_aliases(void)
 {
    Int i;
    for (i = 0; i < N_ALIASES; i++) {
-      SP_aliases[i].temp  = IRTemp_INVALID();
+      SP_aliases[i].temp  = IRTemp_INVALID;
       SP_aliases[i].delta = 0;
    }
    next_SP_alias_slot = 0;
@@ -167,7 +167,7 @@ static void clear_SP_aliases(void)
 
 static void add_SP_alias(IRTemp temp, Long delta)
 {
-   vg_assert(!isIRTempInvalid(temp));
+   vg_assert(temp != IRTemp_INVALID);
    SP_aliases[ next_SP_alias_slot ].temp  = temp;
    SP_aliases[ next_SP_alias_slot ].delta = delta;
    next_SP_alias_slot++;
@@ -177,17 +177,17 @@ static void add_SP_alias(IRTemp temp, Long delta)
 static Bool get_SP_delta(IRTemp temp, Long* delta)
 {
    Int i;      // i must be signed!
-   vg_assert(!isIRTempInvalid(temp));
+   vg_assert(temp != IRTemp_INVALID);
    // Search backwards between current buffer position and the start.
    for (i = next_SP_alias_slot-1; i >= 0; i--) {
-      if (eqIRTemp(temp, SP_aliases[i].temp)) {
+      if (temp == SP_aliases[i].temp) {
          *delta = SP_aliases[i].delta;
          return True;
       }
    }
    // Search backwards between the end and the current buffer position.
    for (i = N_ALIASES-1; i >= next_SP_alias_slot; i--) {
-      if (eqIRTemp(temp, SP_aliases[i].temp)) {
+      if (temp == SP_aliases[i].temp) {
          *delta = SP_aliases[i].delta;
          return True;
       }
@@ -199,7 +199,7 @@ static void update_SP_aliases(Long delta)
 {
    Int i;
    for (i = 0; i < N_ALIASES; i++) {
-      if (isIRTempInvalid(SP_aliases[i].temp)) {
+      if (SP_aliases[i].temp == IRTemp_INVALID) {
          return;
       }
       SP_aliases[i].delta += delta;
@@ -269,6 +269,7 @@ IRSB* tool_instrument_then_gdbserver_if_needed ( VgCallbackClosure* closureV,
 */
 static
 IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
+                                  IRTypeEnv*             tyenv,
                                   IRStmtVec*             stmts_in,
                                   IRStmtVec*             parent,
                                   const VexGuestLayout*  layout,
@@ -290,8 +291,9 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
 
    /* Set up new IRStmtVec */
    IRStmtVec* out = emptyIRStmtVec();
-   out->tyenv     = deepCopyIRTypeEnv(stmts_in->tyenv);
    out->parent    = parent;
+   out->id        = stmts_in->id;
+   out->def_set   = deepCopyIRTempDefSet(stmts_in->def_set);
 
    delta = 0;
 
@@ -406,7 +408,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       if (e->tag != Iex_Get)              goto case2;
       if (e->Iex.Get.offset != offset_SP) goto case2;
       if (e->Iex.Get.ty != typeof_SP)     goto case2;
-      vg_assert( typeOfIRTemp(out, st->Ist.WrTmp.tmp) == typeof_SP );
+      vg_assert( typeOfIRTemp(tyenv, st->Ist.WrTmp.tmp) == typeof_SP );
       add_SP_alias(st->Ist.WrTmp.tmp, 0);
       addStmtToIRStmtVec(out, st);
       continue;
@@ -421,7 +423,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       if (e->Iex.Binop.arg2->tag != Iex_Const) goto case3;
       if (!IS_ADD_OR_SUB(e->Iex.Binop.op)) goto case3;
       con = GET_CONST(e->Iex.Binop.arg2->Iex.Const.con);
-      vg_assert( typeOfIRTemp(out, st->Ist.WrTmp.tmp) == typeof_SP );
+      vg_assert( typeOfIRTemp(tyenv, st->Ist.WrTmp.tmp) == typeof_SP );
       if (IS_ADD(e->Iex.Binop.op)) {
          add_SP_alias(st->Ist.WrTmp.tmp, delta + con);
       } else {
@@ -436,7 +438,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       e = st->Ist.WrTmp.data;
       if (e->tag != Iex_RdTmp) goto case4;
       if (!get_SP_delta(e->Iex.RdTmp.tmp, &delta)) goto case4;
-      vg_assert( typeOfIRTemp(out, st->Ist.WrTmp.tmp) == typeof_SP );
+      vg_assert( typeOfIRTemp(tyenv, st->Ist.WrTmp.tmp) == typeof_SP );
       add_SP_alias(st->Ist.WrTmp.tmp, delta);
       addStmtToIRStmtVec(out, st);
       continue;
@@ -451,7 +453,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       last_SP   = first_SP + sizeof_SP - 1;
       first_Put = st->Ist.Put.offset;
       last_Put  = first_Put
-                  + sizeofIRType(typeOfIRExpr(out, st->Ist.Put.data))
+                  + sizeofIRType(typeOfIRExpr(tyenv, st->Ist.Put.data))
                   - 1;
       vg_assert(first_SP <= last_SP);
       vg_assert(first_Put <= last_Put);
@@ -469,7 +471,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
             put_SP_alias is immediately preceded by an assertion that
             we are putting in a binding for a correctly-typed
             temporary. */
-         vg_assert( typeOfIRTemp(out, tttmp) == typeof_SP );
+         vg_assert( typeOfIRTemp(tyenv, tttmp) == typeof_SP );
          /* From the same type-and-offset-correctness argument, if 
             we found a useable alias, it must for an "exact" write of SP. */
          vg_assert(first_SP == first_Put);
@@ -521,7 +523,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
         generic:
          /* Pass both the old and new SP values to this helper.  Also,
             pass an origin tag, even if it isn't needed. */
-         old_SP = newIRTemp(out->tyenv, typeof_SP);
+         old_SP = newIRTemp(tyenv, out, typeof_SP);
          addStmtToIRStmtVec( 
             out,
             IRStmt_WrTmp( old_SP, IRExpr_Get(offset_SP, typeof_SP) ) 
@@ -568,7 +570,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
             /* 1 */
             addStmtToIRStmtVec(out, st);
             /* 2 */
-            new_SP = newIRTemp(out->tyenv, typeof_SP);
+            new_SP = newIRTemp(tyenv, out, typeof_SP);
             addStmtToIRStmtVec( 
                out,
                IRStmt_WrTmp( new_SP, IRExpr_Get(offset_SP, typeof_SP) ) 
@@ -609,7 +611,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
 
          if (first_Put == first_SP && last_Put == last_SP
              && st->Ist.Put.data->tag == Iex_RdTmp) {
-            vg_assert( typeOfIRTemp(out, st->Ist.Put.data->Iex.RdTmp.tmp)
+            vg_assert( typeOfIRTemp(tyenv, st->Ist.Put.data->Iex.RdTmp.tmp)
                        == typeof_SP );
             add_SP_alias(st->Ist.Put.data->Iex.RdTmp.tmp, 0);
          }
@@ -648,10 +650,12 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       if (st->tag == Ist_IfThenElse) {
          st = IRStmt_IfThenElse(
                 st->Ist.IfThenElse.cond,
-                vg_SP_update_IRStmtVec(closureV, st->Ist.IfThenElse.then_leg,
-                                       out, layout, vge, vai, gWordTy, hWordTy),
-                vg_SP_update_IRStmtVec(closureV, st->Ist.IfThenElse.else_leg,
-                                       out, layout, vge, vai, gWordTy, hWordTy),
+                vg_SP_update_IRStmtVec(closureV, tyenv,
+                                       st->Ist.IfThenElse.then_leg, out,
+                                       layout, vge, vai, gWordTy, hWordTy),
+                vg_SP_update_IRStmtVec(closureV, tyenv,
+                                       st->Ist.IfThenElse.else_leg, out,
+                                       layout, vge, vai, gWordTy, hWordTy),
                 st->Ist.IfThenElse.phi_nodes);
       }
 
@@ -684,13 +688,14 @@ IRSB* vg_SP_update_pass ( void*             closureV,
 {
    /* Set up BB */
    IRSB* bb     = emptyIRSB();
+   bb->tyenv    = deepCopyIRTypeEnv(sb_in->tyenv);
    bb->id_seq   = sb_in->id_seq;
    bb->next     = deepCopyIRExpr(sb_in->next);
    bb->jumpkind = sb_in->jumpkind;
    bb->offsIP   = sb_in->offsIP;
 
-   bb->stmts = vg_SP_update_IRStmtVec(closureV, sb_in->stmts, NULL, layout,
-                                      vge, vai, gWordTy, hWordTy);
+   bb->stmts = vg_SP_update_IRStmtVec(closureV, bb->tyenv, sb_in->stmts, NULL,
+                                      layout, vge, vai, gWordTy, hWordTy);
    return bb;
 }
 

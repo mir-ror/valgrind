@@ -1282,6 +1282,8 @@ static IRStmtVec* instrument_for_gdbserver_IRStmtVec
 {
    IRStmtVec* stmts_out = emptyIRStmtVec();
    stmts_out->parent    = parent;
+   stmts_out->id        = stmts_in->id;
+   stmts_out->def_set   = deepCopyIRTempDefSet(stmts_in->def_set);
 
    for (UInt i = 0; i < stmts_in->stmts_used; i++) {
       IRStmt* st = stmts_in->stmts[i];
