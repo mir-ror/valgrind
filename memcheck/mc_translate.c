@@ -326,7 +326,7 @@ static void initMCEnv(IRTypeEnv* tyenv, IRStmtVec* stmts_in, MCEnv* mce,
    IRStmtVec* stmts_out = emptyIRStmtVec();
    stmts_out->parent    = (parent_mce != NULL) ? parent_mce->stmts : NULL;
    stmts_out->id        = stmts_in->id;
-   stmts_out->def_set   = deepCopyIRTempDefSet(stmts_in->def_set);
+   stmts_out->defset    = deepCopyIRTempDefSet(stmts_in->defset);
 
    mce->stmts    = stmts_out;
    mce->tyenv    = tyenv;
@@ -464,7 +464,7 @@ static IRExpr* definedOfType ( IRType ty ) {
 static inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) {
    if (mce->settings->trace) {
       VG_(printf)("  %c: ", cat);
-      ppIRStmt(st);
+      ppIRStmt(st, mce->tyenv, 0);
       VG_(printf)("\n");
    }
    addStmtToIRStmtVec(mce->stmts, st);
@@ -6445,7 +6445,7 @@ static Bool isBogusIRStmt(/*FLAT*/ IRStmt* st)
                 || isBogusIRStmtVec(st->Ist.IfThenElse.else_leg);
       default: 
       unhandled:
-         ppIRStmt(st);
+         ppIRStmt(st, NULL, 0);
          VG_(tool_panic)("isBogusIRStmt");
    }
 }
@@ -6458,7 +6458,7 @@ static Bool isBogusIRStmtVec(/*FLAT*/ IRStmtVec* stmts)
       Bool bogus = isBogusIRStmt(st);
       if (0 && bogus) {
          VG_(printf)("bogus: ");
-         ppIRStmt(st);
+         ppIRStmt(st, NULL, 0);
          VG_(printf)("\n");
       }
       if (bogus) {
@@ -6480,7 +6480,7 @@ static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
 
       if (mce->settings->trace) {
          VG_(printf)("\n");
-         ppIRStmt_wrk(st, mce->depth);
+         ppIRStmt(st, mce->tyenv, mce->depth);
          VG_(printf)("\n");
       }
 
@@ -6579,7 +6579,7 @@ static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
 
          default:
             VG_(printf)("\n");
-            ppIRStmt(st);
+            ppIRStmt(st, mce->tyenv, 0);
             VG_(printf)("\n");
             VG_(tool_panic)("memcheck: unhandled IRStmt");
 
@@ -6587,7 +6587,7 @@ static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
 
       if (0 && mce->settings->trace) {
          for (UInt j = first_stmt; j < mce->stmts->stmts_used; j++) {
-            ppIRStmt_wrk(mce->stmts->stmts[j], mce->depth + 1);
+            ppIRStmt(mce->stmts->stmts[j], mce->tyenv, mce->depth + 1);
             VG_(printf)("\n");
          }
          VG_(printf)("\n");
@@ -6745,7 +6745,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    if (0 && verboze) {
       for (UInt j = first_stmt; j < sb_out->stmts->stmts_used; j++) {
-         ppIRStmt_wrk(sb_out->stmts->stmts[j], 1);
+         ppIRStmt(sb_out->stmts->stmts[j], sb_out->tyenv, 1);
          VG_(printf)("\n");
       }
       VG_(printf)("\n");
@@ -7772,7 +7772,7 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
 
       default:
          VG_(printf)("mc_translate.c: schemeS: unhandled: ");
-         ppIRStmt(st); 
+         ppIRStmt(st, mce->tyenv, 0); 
          VG_(tool_panic)("memcheck:schemeS");
    }
 }

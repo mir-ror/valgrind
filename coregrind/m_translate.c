@@ -293,7 +293,7 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
    IRStmtVec* out = emptyIRStmtVec();
    out->parent    = parent;
    out->id        = stmts_in->id;
-   out->def_set   = deepCopyIRTempDefSet(stmts_in->def_set);
+   out->defset    = deepCopyIRTempDefSet(stmts_in->defset);
 
    delta = 0;
 
