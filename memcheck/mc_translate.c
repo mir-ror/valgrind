@@ -6256,8 +6256,7 @@ static void do_shadow_LoadG ( MCEnv* mce, IRLoadG* lg )
 static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
                                  MCEnv* mce);
 
-static void do_shadow_IfThenElse(MCEnv* mce, IRExpr* cond, IRStmtVec* then_leg,
-                                 IRStmtVec* else_leg, IRPhiVec* phi_nodes_in)
+static void do_shadow_IfThenElse(MCEnv* mce, IRIfThenElse* ite)
 {
    IRTemp (*findShadowTmp)(MCEnv* mce, IRTemp orig);
    HChar category;
@@ -6269,19 +6268,19 @@ static void do_shadow_IfThenElse(MCEnv* mce, IRExpr* cond, IRStmtVec* then_leg,
       category = 'V';
    }
 
-   complainIfUndefined(mce, cond, NULL);
+   complainIfUndefined(mce, ite->cond, NULL);
 
    MCEnv then_mce;
-   initMCEnv(mce->tyenv, then_leg, &then_mce, mce);
-   instrument_IRStmtVec(then_leg, 0, &then_mce);
+   initMCEnv(mce->tyenv, ite->then_leg, &then_mce, mce);
+   instrument_IRStmtVec(ite->then_leg, 0, &then_mce);
 
    MCEnv else_mce;
-   initMCEnv(mce->tyenv, else_leg, &else_mce, mce);
-   instrument_IRStmtVec(else_leg, 0, &else_mce);
+   initMCEnv(mce->tyenv, ite->else_leg, &else_mce, mce);
+   instrument_IRStmtVec(ite->else_leg, 0, &else_mce);
 
    IRPhiVec* phi_nodes_out = emptyIRPhiVec();
-   for (UInt i = 0; i < phi_nodes_in->phis_used; i++) {
-      IRPhi* phi_in     = phi_nodes_in->phis[i];
+   for (UInt i = 0; i < ite->phi_nodes->phis_used; i++) {
+      IRPhi* phi_in     = ite->phi_nodes->phis[i];
       IRPhi* phi_shadow = mkIRPhi(findShadowTmp(mce, phi_in->dst),
                                   findShadowTmp(&then_mce, phi_in->srcThen),
                                   findShadowTmp(&else_mce, phi_in->srcElse));
@@ -6289,8 +6288,8 @@ static void do_shadow_IfThenElse(MCEnv* mce, IRExpr* cond, IRStmtVec* then_leg,
       phi('C', mce, phi_nodes_out, phi_in);
    }
 
-   stmt(category, mce, IRStmt_IfThenElse(cond, then_mce.stmts, else_mce.stmts,
-                                         phi_nodes_out));
+   stmt(category, mce, IRStmt_IfThenElse(ite->cond, ite->hint, then_mce.stmts,
+                                         else_mce.stmts, phi_nodes_out));
    deinitMCEnv(&then_mce);
    deinitMCEnv(&else_mce);
 }
@@ -6440,9 +6439,9 @@ static Bool isBogusIRStmt(/*FLAT*/ IRStmt* st)
                        ? isBogusAtom(st->Ist.LLSC.storedata)
                        : False);
       case Ist_IfThenElse:
-         return isBogusAtom(st->Ist.IfThenElse.cond)
-                || isBogusIRStmtVec(st->Ist.IfThenElse.then_leg)
-                || isBogusIRStmtVec(st->Ist.IfThenElse.else_leg);
+         return isBogusAtom(st->Ist.IfThenElse.details->cond)
+                || isBogusIRStmtVec(st->Ist.IfThenElse.details->then_leg)
+                || isBogusIRStmtVec(st->Ist.IfThenElse.details->else_leg);
       default: 
       unhandled:
          ppIRStmt(st, NULL, 0);
@@ -6566,10 +6565,7 @@ static void instrument_IRStmtVec(IRStmtVec* stmts_in, UInt stmts_in_first,
             break;
 
          case Ist_IfThenElse:
-            do_shadow_IfThenElse(mce, st->Ist.IfThenElse.cond,
-                                      st->Ist.IfThenElse.then_leg,
-                                      st->Ist.IfThenElse.else_leg,
-                                      st->Ist.IfThenElse.phi_nodes);
+            do_shadow_IfThenElse(mce, st->Ist.IfThenElse.details);
             /* Note, do_shadow_IfThenElse copies the IfThenElse itself to the
                output stmts, because it needs to add instrumentation to the legs
                and to phi nodes. Hence skip the copy below. Also skip the
@@ -6981,8 +6977,8 @@ static IRStmtVec* final_tidy_IRStmtVec(IRStmtVec* stmts)
       tl_assert(st);
 
       if (st->tag == Ist_IfThenElse) {
-         final_tidy_IRStmtVec(st->Ist.IfThenElse.then_leg);
-         final_tidy_IRStmtVec(st->Ist.IfThenElse.else_leg);
+         final_tidy_IRStmtVec(st->Ist.IfThenElse.details->then_leg);
+         final_tidy_IRStmtVec(st->Ist.IfThenElse.details->else_leg);
       }
 
       if (st->tag != Ist_Dirty)

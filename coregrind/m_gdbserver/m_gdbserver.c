@@ -1298,13 +1298,14 @@ static IRStmtVec* instrument_for_gdbserver_IRStmtVec
       }
 
       if (st->tag == Ist_IfThenElse) {
+         IRIfThenElse* ite = st->Ist.IfThenElse.details;
          st = IRStmt_IfThenElse(
-                st->Ist.IfThenElse.cond,
-                instrument_for_gdbserver_IRStmtVec(st->Ist.IfThenElse.then_leg,
-                        stmts_out, instr_needed, layout, vge, gWordTy, hWordTy),
-                instrument_for_gdbserver_IRStmtVec(st->Ist.IfThenElse.else_leg,
-                        stmts_out, instr_needed, layout, vge, gWordTy, hWordTy),
-                st->Ist.IfThenElse.phi_nodes);
+                ite->cond, ite->hint,
+                instrument_for_gdbserver_IRStmtVec(ite->then_leg, stmts_out,
+                                   instr_needed, layout, vge, gWordTy, hWordTy),
+                instrument_for_gdbserver_IRStmtVec(ite->else_leg, stmts_out,
+                                   instr_needed, layout, vge, gWordTy, hWordTy),
+                ite->phi_nodes);
       }
       addStmtToIRStmtVec(stmts_out, st);
 

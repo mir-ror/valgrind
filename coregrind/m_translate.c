@@ -648,15 +648,14 @@ IRStmtVec* vg_SP_update_IRStmtVec(void*                  closureV,
       }
 
       if (st->tag == Ist_IfThenElse) {
+         IRIfThenElse* ite = st->Ist.IfThenElse.details;
          st = IRStmt_IfThenElse(
-                st->Ist.IfThenElse.cond,
-                vg_SP_update_IRStmtVec(closureV, tyenv,
-                                       st->Ist.IfThenElse.then_leg, out,
+                ite->cond, ite->hint,
+                vg_SP_update_IRStmtVec(closureV, tyenv, ite->then_leg, out,
                                        layout, vge, vai, gWordTy, hWordTy),
-                vg_SP_update_IRStmtVec(closureV, tyenv,
-                                       st->Ist.IfThenElse.else_leg, out,
+                vg_SP_update_IRStmtVec(closureV, tyenv, ite->else_leg, out,
                                        layout, vge, vai, gWordTy, hWordTy),
-                st->Ist.IfThenElse.phi_nodes);
+                ite->phi_nodes);
       }
 
       /* well, not interesting.  Just copy and keep going. */
